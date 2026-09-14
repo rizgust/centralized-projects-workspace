@@ -68,6 +68,9 @@ func Run(pcRoot, controlRoot, remoteURL string) (Result, error) {
 				return Result{}, err
 			}
 		}
+		if err := meta.AppendJournalInDir(metaDir, "system", "onboarded via `pcctl onboard`"); err != nil {
+			return Result{}, err
+		}
 		res.Scaffolded = true
 	}
 

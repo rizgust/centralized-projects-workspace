@@ -24,10 +24,13 @@ type ProjectRef struct {
 }
 
 type Options struct {
-	PermissionMode  string // acceptEdits | bypassPermissions | plan | default | dontAsk | auto
-	AllowedTools    []string
-	MaxBudgetUSD    float64
-	ResumeSessionID string // set only when resuming an existing conversation
+	PermissionMode     string // acceptEdits | bypassPermissions | plan | default | dontAsk | auto
+	AllowedTools       []string
+	MaxBudgetUSD       float64
+	ResumeSessionID    string // set only when resuming an existing conversation
+	Agent              string // custom subagent persona name, passed as --agent <name>
+	ExtraAddDirs       []string
+	AppendSystemPrompt string
 }
 
 const (
@@ -47,6 +50,7 @@ type Run struct {
 	SessionID       string
 	PID             int
 	PermissionMode  string
+	Role            string
 	Status          string
 	StartedAt       string
 	EndedAt         string
@@ -56,9 +60,10 @@ type Run struct {
 }
 
 type Manager struct {
-	db      *sql.DB
-	logsDir string
-	onEvent func(Run)
+	db          *sql.DB
+	logsDir     string
+	controlRoot string // where pcctl lives, prepended to a spawned agent's PATH
+	onEvent     func(Run)
 
 	mu       sync.Mutex
 	stopping map[string]bool
@@ -72,7 +77,7 @@ func (m *Manager) SetEventHandler(fn func(Run)) {
 	m.mu.Unlock()
 }
 
-func Open(dbPath, logsDir string, onEvent func(Run)) (*Manager, error) {
+func Open(dbPath, logsDir, controlRoot string, onEvent func(Run)) (*Manager, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, err
@@ -89,6 +94,7 @@ func Open(dbPath, logsDir string, onEvent func(Run)) (*Manager, error) {
 			session_id TEXT NOT NULL,
 			pid INTEGER,
 			permission_mode TEXT,
+			role TEXT,
 			status TEXT NOT NULL,
 			started_at TEXT NOT NULL,
 			ended_at TEXT,
@@ -102,7 +108,7 @@ func Open(dbPath, logsDir string, onEvent func(Run)) (*Manager, error) {
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		return nil, err
 	}
-	return &Manager{db: db, logsDir: logsDir, onEvent: onEvent, stopping: map[string]bool{}}, nil
+	return &Manager{db: db, logsDir: logsDir, controlRoot: controlRoot, onEvent: onEvent, stopping: map[string]bool{}}, nil
 }
 
 // ReconcileOnBoot marks any run left 'running' from a previous process
@@ -161,6 +167,15 @@ func (m *Manager) start(ref ProjectRef, prompt string, opts Options, parentID st
 	if opts.MaxBudgetUSD > 0 {
 		args = append(args, "--max-budget-usd", strconv.FormatFloat(opts.MaxBudgetUSD, 'f', 2, 64))
 	}
+	if opts.Agent != "" {
+		args = append(args, "--agent", opts.Agent)
+	}
+	for _, dir := range opts.ExtraAddDirs {
+		args = append(args, "--add-dir", dir)
+	}
+	if opts.AppendSystemPrompt != "" {
+		args = append(args, "--append-system-prompt", opts.AppendSystemPrompt)
+	}
 	if opts.ResumeSessionID != "" {
 		args = append(args, "--resume", opts.ResumeSessionID)
 	} else {
@@ -177,6 +192,11 @@ func (m *Manager) start(ref ProjectRef, prompt string, opts Options, parentID st
 	cmd.Dir = ref.CWD
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
+	if m.controlRoot != "" {
+		// Lets the spawned agent invoke `pcctl` (the shared task queue CLI)
+		// directly from Bash regardless of its own cwd.
+		cmd.Env = append(os.Environ(), "PATH="+m.controlRoot+string(os.PathListSeparator)+os.Getenv("PATH"))
+	}
 
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
@@ -187,15 +207,15 @@ func (m *Manager) start(ref ProjectRef, prompt string, opts Options, parentID st
 		ID: invocationID, ParentID: parentID,
 		Host: ref.Host, Org: ref.Org, Repo: ref.Repo, CWD: ref.CWD,
 		Prompt: prompt, SessionID: sessionID, PID: cmd.Process.Pid,
-		PermissionMode: opts.PermissionMode, Status: StatusRunning,
+		PermissionMode: opts.PermissionMode, Role: opts.Agent, Status: StatusRunning,
 		StartedAt: time.Now().Format(time.RFC3339), LogPath: logPath,
 	}
 
 	if _, err := m.db.Exec(
-		`INSERT INTO runs (id, parent_id, host, org, repo, cwd, prompt, session_id, pid, permission_mode, status, started_at, log_path)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO runs (id, parent_id, host, org, repo, cwd, prompt, session_id, pid, permission_mode, role, status, started_at, log_path)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.ID, nullable(run.ParentID), run.Host, run.Org, run.Repo, run.CWD, run.Prompt,
-		run.SessionID, run.PID, run.PermissionMode, run.Status, run.StartedAt, run.LogPath,
+		run.SessionID, run.PID, run.PermissionMode, nullable(run.Role), run.Status, run.StartedAt, run.LogPath,
 	); err != nil {
 		logFile.Close()
 		return nil, err
@@ -286,12 +306,12 @@ func (m *Manager) Stop(runID string) error {
 func (m *Manager) Get(id string) (*Run, error) {
 	row := m.db.QueryRow(
 		`SELECT id, COALESCE(parent_id,''), host, org, repo, cwd, prompt, session_id, pid,
-		        permission_mode, status, started_at, COALESCE(ended_at,''), COALESCE(log_path,''),
+		        permission_mode, COALESCE(role,''), status, started_at, COALESCE(ended_at,''), COALESCE(log_path,''),
 		        COALESCE(summary,''), COALESCE(cost_usd,0)
 		 FROM runs WHERE id = ?`, id)
 	var r Run
 	if err := row.Scan(&r.ID, &r.ParentID, &r.Host, &r.Org, &r.Repo, &r.CWD, &r.Prompt, &r.SessionID,
-		&r.PID, &r.PermissionMode, &r.Status, &r.StartedAt, &r.EndedAt, &r.LogPath, &r.Summary, &r.CostUSD); err != nil {
+		&r.PID, &r.PermissionMode, &r.Role, &r.Status, &r.StartedAt, &r.EndedAt, &r.LogPath, &r.Summary, &r.CostUSD); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -300,7 +320,7 @@ func (m *Manager) Get(id string) (*Run, error) {
 func (m *Manager) List(limit int) ([]Run, error) {
 	rows, err := m.db.Query(
 		`SELECT id, COALESCE(parent_id,''), host, org, repo, cwd, prompt, session_id, pid,
-		        permission_mode, status, started_at, COALESCE(ended_at,''), COALESCE(log_path,''),
+		        permission_mode, COALESCE(role,''), status, started_at, COALESCE(ended_at,''), COALESCE(log_path,''),
 		        COALESCE(summary,''), COALESCE(cost_usd,0)
 		 FROM runs ORDER BY started_at DESC LIMIT ?`, limit)
 	if err != nil {
@@ -311,7 +331,7 @@ func (m *Manager) List(limit int) ([]Run, error) {
 	for rows.Next() {
 		var r Run
 		if err := rows.Scan(&r.ID, &r.ParentID, &r.Host, &r.Org, &r.Repo, &r.CWD, &r.Prompt, &r.SessionID,
-			&r.PID, &r.PermissionMode, &r.Status, &r.StartedAt, &r.EndedAt, &r.LogPath, &r.Summary, &r.CostUSD); err != nil {
+			&r.PID, &r.PermissionMode, &r.Role, &r.Status, &r.StartedAt, &r.EndedAt, &r.LogPath, &r.Summary, &r.CostUSD); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -17,17 +18,32 @@ import (
 
 	"github.com/rizgust/centralized-projects-workspace/internal/config"
 	"github.com/rizgust/centralized-projects-workspace/internal/index"
+	"github.com/rizgust/centralized-projects-workspace/internal/queue"
 	"github.com/rizgust/centralized-projects-workspace/internal/runner"
 )
 
 var safeAllowedTools = []string{
 	"Read", "Edit", "Write", "Grep", "Glob",
 	"Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)",
+	"Bash(pcctl queue:*)",
+}
+
+// knownRoles are the five agent personas defined globally at
+// ~/.claude/agents/<role>.md, invoked headlessly via `claude --agent <role>`.
+var knownRoles = []string{"analyst", "golang-dev", "frontend-dev", "godot-dev", "qa-tester"}
+
+func isKnownRole(r string) bool {
+	for _, k := range knownRoles {
+		if r == k {
+			return true
+		}
+	}
+	return false
 }
 
 type pendingFull struct {
-	name, prompt, token string
-	expires             time.Time
+	role, name, prompt, token string
+	expires                   time.Time
 }
 
 type Bot struct {
@@ -36,6 +52,7 @@ type Bot struct {
 	controlRoot string
 	idxDB       *sql.DB
 	runner      *runner.Manager
+	queue       *queue.Queue
 	bot         *gotgbot.Bot
 	updater     *ext.Updater
 
@@ -43,7 +60,7 @@ type Bot struct {
 	pending map[int64]pendingFull
 }
 
-func New(cfg config.Config, metaRoot, controlRoot string, idxDB *sql.DB, mgr *runner.Manager) (*Bot, error) {
+func New(cfg config.Config, metaRoot, controlRoot string, idxDB *sql.DB, mgr *runner.Manager, q *queue.Queue) (*Bot, error) {
 	if cfg.TelegramBotToken == "" {
 		return nil, fmt.Errorf("TELEGRAM_BOT_TOKEN not set in control/.env")
 	}
@@ -54,7 +71,7 @@ func New(cfg config.Config, metaRoot, controlRoot string, idxDB *sql.DB, mgr *ru
 
 	b := &Bot{
 		cfg: cfg, metaRoot: metaRoot, controlRoot: controlRoot,
-		idxDB: idxDB, runner: mgr, bot: gbot,
+		idxDB: idxDB, runner: mgr, queue: q, bot: gbot,
 		pending: map[int64]pendingFull{},
 	}
 	mgr.SetEventHandler(b.notifyRunEvent)
@@ -88,6 +105,11 @@ func (b *Bot) handlers() []ext.Handler {
 		handlers.NewCommand("runs", b.wrap(b.cmdRuns)),
 		handlers.NewCommand("stop", b.wrap(b.cmdStop)),
 		handlers.NewCommand("resume", b.wrap(b.cmdResume)),
+		handlers.NewCommand("queue", b.wrap(b.cmdQueue)),
+		handlers.NewCommand("task", b.wrap(b.cmdTask)),
+		handlers.NewCommand("assign", b.wrap(b.cmdAssign)),
+		handlers.NewCommand("taskdone", b.wrap(b.cmdTaskDone)),
+		handlers.NewCommand("handoff", b.wrap(b.cmdHandoff)),
 	}
 }
 
@@ -138,9 +160,38 @@ func (b *Bot) notifyRunEvent(r runner.Run) {
 	if b.cfg.TelegramMasterID == 0 {
 		return
 	}
-	msg := fmt.Sprintf("[%s] run %s (%s/%s) finished: %s\n%s",
-		r.Status, shortID(r.ID), r.Org, r.Repo, costLine(r.CostUSD), truncate(r.Summary, 3000))
+	role := r.Role
+	if role == "" {
+		role = "-"
+	}
+	msg := fmt.Sprintf("[%s] run %s (%s, %s/%s) finished: %s\n%s",
+		r.Status, shortID(r.ID), role, r.Org, r.Repo, costLine(r.CostUSD), truncate(r.Summary, 3000))
 	b.bot.SendMessage(b.cfg.TelegramMasterID, msg, nil)
+}
+
+// metaDirFor returns this project's control/meta directory, granted to a
+// spawned agent via --add-dir so it can read/write status.md, tasks.md and
+// journal.md there even though its cwd is the project's own repo.
+func (b *Bot) metaDirFor(host, org, repo string) string {
+	return filepath.Join(b.metaRoot, host, org, repo)
+}
+
+// systemPromptFor briefs a role-run agent on where its project's memory
+// files and the shared queue tool live, so it can follow the "update memory
+// before finishing" contract every role definition commits to.
+func systemPromptFor(role, metaDir string) string {
+	return fmt.Sprintf(
+		"You are acting as the %s role in Projects-Centralized. "+
+			"This project's control metadata lives at: %s (status.md, tasks.md, journal.md) — "+
+			"you have file access there via --add-dir. "+
+			"The shared cross-role task queue is available as `pcctl queue` on PATH "+
+			"(e.g. `pcctl queue list --role %s`, `pcctl queue done <id> <notes>`, "+
+			"`pcctl queue handoff <id> <to-role> <title>`). "+
+			"Before you finish: update status.md if project state changed, update tasks.md for "+
+			"any project-level task this closes or opens, and append a dated entry to journal.md "+
+			"summarizing what you did. If you were given a queue task id, mark it done or hand it "+
+			"off to the appropriate next role.",
+		role, metaDir, role)
 }
 
 func genToken() string {
@@ -184,6 +235,21 @@ func splitNameRest(rest string) (name, prompt string) {
 	name = parts[0]
 	if len(parts) > 1 {
 		prompt = strings.TrimSpace(parts[1])
+	}
+	return
+}
+
+// splitRoleNameRest parses "<role> <project> <rest...>" for /run and /full.
+func splitRoleNameRest(rest string) (role, name, prompt string) {
+	parts := strings.SplitN(rest, " ", 3)
+	if len(parts) > 0 {
+		role = parts[0]
+	}
+	if len(parts) > 1 {
+		name = parts[1]
+	}
+	if len(parts) > 2 {
+		prompt = strings.TrimSpace(parts[2])
 	}
 	return
 }

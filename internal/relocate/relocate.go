@@ -87,5 +87,5 @@ func Execute(p Plan) error {
 			return err
 		}
 	}
-	return nil
+	return meta.AppendJournalInDir(p.MetaDir, "system", fmt.Sprintf("relocated in from %s via `pcctl relocate`", p.Src))
 }

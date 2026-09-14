@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -143,4 +144,31 @@ func StatusPath(metaRoot, host, org, repo string) string {
 
 func TasksPath(metaRoot, host, org, repo string) string {
 	return filepath.Join(metaRoot, host, org, repo, "tasks.md")
+}
+
+func JournalPath(metaRoot, host, org, repo string) string {
+	return filepath.Join(metaRoot, host, org, repo, "journal.md")
+}
+
+const journalHeader = "# Journal\n\nAppend-only history of completed work on this project — \"tasks memory\"," +
+	" distinct from tasks.md's live open/done checklist. Each agent role appends an entry here" +
+	" when it finishes a task.\n"
+
+// AppendJournalInDir adds a dated, role-attributed entry to journal.md
+// inside a project's meta directory (e.g. control/meta/<host>/<org>/<repo>),
+// creating the file with its header on first use.
+func AppendJournalInDir(metaDir, role, entry string) error {
+	path := filepath.Join(metaDir, "journal.md")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.WriteFile(path, []byte(journalHeader), 0o644); err != nil {
+			return err
+		}
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = fmt.Fprintf(f, "\n## %s — %s\n\n%s\n", time.Now().Format("2006-01-02 15:04"), role, strings.TrimSpace(entry))
+	return err
 }

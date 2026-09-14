@@ -5,15 +5,19 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/rizgust/centralized-projects-workspace/internal/bot"
 	"github.com/rizgust/centralized-projects-workspace/internal/config"
 	"github.com/rizgust/centralized-projects-workspace/internal/index"
 	"github.com/rizgust/centralized-projects-workspace/internal/onboard"
+	"github.com/rizgust/centralized-projects-workspace/internal/queue"
 	"github.com/rizgust/centralized-projects-workspace/internal/relocate"
+	"github.com/rizgust/centralized-projects-workspace/internal/resolve"
 	"github.com/rizgust/centralized-projects-workspace/internal/runner"
 )
 
@@ -24,17 +28,35 @@ type paths struct {
 	dbDir       string
 	indexDBPath string
 	runsDBPath  string
+	queueDBPath string
 	logsDir     string
 	envPath     string
 }
 
+// resolvePaths finds control/ two ways: primarily via the running binary's
+// own location (pcctl.exe lives in control/, so this works no matter what
+// directory a caller — including a spawned agent working in its own repo —
+// invoked it from), falling back to cwd for `go run` during development.
 func resolvePaths() (paths, error) {
-	controlRoot, err := os.Getwd()
-	if err != nil {
-		return paths{}, err
+	controlRoot := ""
+	if exe, err := os.Executable(); err == nil {
+		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+			exe = resolved
+		}
+		dir := filepath.Dir(exe)
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			controlRoot = dir
+		}
 	}
-	if _, err := os.Stat(filepath.Join(controlRoot, "go.mod")); err != nil {
-		return paths{}, fmt.Errorf("run pcctl from the control/ directory (no go.mod found in %s)", controlRoot)
+	if controlRoot == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return paths{}, err
+		}
+		if _, err := os.Stat(filepath.Join(cwd, "go.mod")); err != nil {
+			return paths{}, fmt.Errorf("could not locate control/ (checked the pcctl binary's own directory and cwd %s for go.mod)", cwd)
+		}
+		controlRoot = cwd
 	}
 	pcRoot := filepath.Dir(controlRoot)
 	return paths{
@@ -44,6 +66,7 @@ func resolvePaths() (paths, error) {
 		dbDir:       filepath.Join(controlRoot, "db"),
 		indexDBPath: filepath.Join(controlRoot, "db", "index.sqlite3"),
 		runsDBPath:  filepath.Join(controlRoot, "db", "runs.sqlite3"),
+		queueDBPath: filepath.Join(controlRoot, "db", "queue.sqlite3"),
 		logsDir:     filepath.Join(pcRoot, "logs"),
 		envPath:     filepath.Join(controlRoot, ".env"),
 	}, nil
@@ -72,6 +95,8 @@ func main() {
 		cmdRelocate(p, os.Args[2:])
 	case "bot":
 		cmdBot(p)
+	case "queue":
+		cmdQueue(p, os.Args[2:])
 	default:
 		usage()
 		os.Exit(1)
@@ -84,7 +109,13 @@ func usage() {
   sync                          rebuild db/index.sqlite3 from meta/**/*.md
   onboard <remote-url>          fresh git clone into ../repos/<host>/<org>/<repo> + scaffold meta
   relocate <path> [--yes]       move an existing local working copy in (dry run without --yes)
-  bot                           start the Telegram control bot (long polling)`)
+  bot                           start the Telegram control bot (long polling)
+
+  queue add <project> <role> <title>            add a task to the shared queue
+  queue list [--role r] [--project p] [--status s]   list queue tasks
+  queue show <task-id>                           show one task
+  queue done <task-id> [notes...]                mark a task done
+  queue handoff <task-id> <to-role> <title>      finish a task, hand a new one to another role`)
 }
 
 func fatal(err error) {
@@ -169,7 +200,7 @@ func cmdBot(p paths) {
 		fatal(err)
 	}
 
-	mgr, err := runner.Open(p.runsDBPath, p.logsDir, nil)
+	mgr, err := runner.Open(p.runsDBPath, p.logsDir, p.controlRoot, nil)
 	if err != nil {
 		fatal(err)
 	}
@@ -179,11 +210,122 @@ func cmdBot(p paths) {
 		fmt.Printf("marked %d stale run(s) as interrupted from a previous boot\n", n)
 	}
 
-	b, err := bot.New(cfg, p.metaRoot, p.controlRoot, idxDB, mgr)
+	q, err := queue.Open(p.queueDBPath)
+	if err != nil {
+		fatal(err)
+	}
+
+	b, err := bot.New(cfg, p.metaRoot, p.controlRoot, idxDB, mgr, q)
 	if err != nil {
 		fatal(err)
 	}
 	if err := b.Run(); err != nil {
 		fatal(err)
 	}
+}
+
+func cmdQueue(p paths, args []string) {
+	if len(args) < 1 {
+		usage()
+		os.Exit(1)
+	}
+	q, err := queue.Open(p.queueDBPath)
+	if err != nil {
+		fatal(err)
+	}
+
+	switch args[0] {
+	case "add":
+		if len(args) < 4 {
+			fmt.Println("usage: pcctl queue add <project> <role> <title...>")
+			os.Exit(1)
+		}
+		m, err := resolveProject(p.metaRoot, args[1])
+		if err != nil {
+			fatal(err)
+		}
+		title := strings.Join(args[3:], " ")
+		t, err := q.Add(m.Dir.Host, m.Dir.Org, m.Dir.Repo, args[2], title, "", "human", "")
+		if err != nil {
+			fatal(err)
+		}
+		fmt.Printf("added task %s [%s] %s (%s)\n", t.ID, t.Role, t.Title, t.Project())
+
+	case "list":
+		var f queue.Filter
+		fs := flag.NewFlagSet("queue list", flag.ExitOnError)
+		fs.StringVar(&f.Role, "role", "", "filter by role")
+		fs.StringVar(&f.Status, "status", "", "filter by status")
+		project := fs.String("project", "", "filter by project name")
+		fs.Parse(args[1:])
+		if *project != "" {
+			m, err := resolveProject(p.metaRoot, *project)
+			if err != nil {
+				fatal(err)
+			}
+			f.Host, f.Org, f.Repo = m.Dir.Host, m.Dir.Org, m.Dir.Repo
+		}
+		tasks, err := q.List(f, 50)
+		if err != nil {
+			fatal(err)
+		}
+		if len(tasks) == 0 {
+			fmt.Println("no matching tasks")
+			return
+		}
+		for _, t := range tasks {
+			fmt.Printf("%s  %-9s %-12s %s (%s)\n", t.ID, t.Status, t.Role, t.Title, t.Project())
+		}
+
+	case "show":
+		if len(args) < 2 {
+			fmt.Println("usage: pcctl queue show <task-id>")
+			os.Exit(1)
+		}
+		t, err := q.FindByPrefix(args[1])
+		if err != nil {
+			fatal(err)
+		}
+		fmt.Printf("id: %s\nproject: %s\nrole: %s\nstatus: %s\ntitle: %s\nbody: %s\ncreated_by: %s\nparent: %s\nnotes: %s\ncreated_at: %s\ndone_at: %s\n",
+			t.ID, t.Project(), t.Role, t.Status, t.Title, t.Body, t.CreatedBy, t.ParentTaskID, t.Notes, t.CreatedAt, t.DoneAt)
+
+	case "done":
+		if len(args) < 2 {
+			fmt.Println("usage: pcctl queue done <task-id> [notes...]")
+			os.Exit(1)
+		}
+		t, err := q.FindByPrefix(args[1])
+		if err != nil {
+			fatal(err)
+		}
+		notes := strings.Join(args[2:], " ")
+		if err := q.SetStatus(t.ID, queue.StatusDone, notes); err != nil {
+			fatal(err)
+		}
+		fmt.Printf("marked %s done\n", t.ID)
+
+	case "handoff":
+		if len(args) < 4 {
+			fmt.Println("usage: pcctl queue handoff <task-id> <to-role> <title...>")
+			os.Exit(1)
+		}
+		t, err := q.FindByPrefix(args[1])
+		if err != nil {
+			fatal(err)
+		}
+		title := strings.Join(args[3:], " ")
+		next, err := q.HandOff(t.ID, args[2], title, "", "")
+		if err != nil {
+			fatal(err)
+		}
+		fmt.Printf("%s done -> handed off as %s [%s] %s\n", t.ID, next.ID, next.Role, next.Title)
+
+	default:
+		usage()
+		os.Exit(1)
+	}
+}
+
+func resolveProject(metaRoot, query string) (resolve.Match, error) {
+	return resolve.Project(metaRoot, query)
 }
