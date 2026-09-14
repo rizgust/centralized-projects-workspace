@@ -94,10 +94,16 @@ func (b *Bot) handlers() []ext.Handler {
 // wrap gates every command except /whoami to the configured master user.
 func (b *Bot) wrap(fn handlers.Response) handlers.Response {
 	return func(bot *gotgbot.Bot, ctx *ext.Context) error {
+		userID := int64(0)
+		if ctx.EffectiveUser != nil {
+			userID = ctx.EffectiveUser.Id
+		}
 		if !b.isMaster(ctx) {
+			fmt.Printf("[refused] user id=%d text=%q\n", userID, ctx.EffectiveMessage.GetText())
 			_, err := ctx.EffectiveMessage.Reply(bot, "not authorized. send /whoami and set TELEGRAM_MASTER_USER_ID in control/.env to your id, then restart the bot.", nil)
 			return err
 		}
+		fmt.Printf("[cmd] user id=%d text=%q\n", userID, ctx.EffectiveMessage.GetText())
 		return fn(bot, ctx)
 	}
 }
@@ -110,10 +116,15 @@ func (b *Bot) Run() error {
 	if _, err := b.bot.GetMe(nil); err != nil {
 		return fmt.Errorf("connecting to telegram: %w", err)
 	}
+	// Timeout is how long Telegram holds the long-poll open server-side;
+	// RequestOpts.Timeout is our own HTTP client's deadline for that same
+	// request and must be longer, or every empty poll "times out" locally
+	// even though nothing is actually wrong.
 	if err := b.updater.StartPolling(b.bot, &ext.PollingOpts{
 		DropPendingUpdates: true,
 		GetUpdatesOpts: &gotgbot.GetUpdatesOpts{
-			Timeout: 9,
+			Timeout:     9,
+			RequestOpts: &gotgbot.RequestOpts{Timeout: 20 * time.Second},
 		},
 	}); err != nil {
 		return fmt.Errorf("starting polling: %w", err)

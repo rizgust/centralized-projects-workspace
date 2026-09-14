@@ -32,9 +32,12 @@ const helpText = `Projects-Centralized control bot
 
 func (b *Bot) cmdWhoami(bot *gotgbot.Bot, ctx *ext.Context) error {
 	id := int64(0)
+	name := ""
 	if ctx.EffectiveUser != nil {
 		id = ctx.EffectiveUser.Id
+		name = ctx.EffectiveUser.Username
 	}
+	fmt.Printf("[/whoami] telegram user id=%d username=%q\n", id, name)
 	msg := fmt.Sprintf("your telegram user id: %d", id)
 	if b.cfg.TelegramMasterID == 0 {
 		msg += "\n\nTELEGRAM_MASTER_USER_ID is not set yet. Add it to control/.env and restart the bot to authorize yourself."
