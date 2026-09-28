@@ -16,3 +16,36 @@ onboarded via `pcctl onboard`
 - RLS test (one transaction, rolled back): 15/15 pass. Checked isolation, cross-tenant FK blocking, owner reassignment blocked, plan/admin escalation blocked, anon denied, check constraints.
 - `.env` untracked and gitignored; `.env.example` added; `.env.local` holds the publishable and secret keys; lib/supabase.ts reads NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY. types/database.ts regenerated.
 - Not committed.
+
+## 2026-09-28 — claude (phase 2: Telegram bot + OTP login)
+
+- Switched the package manager to Bun (bun.lock; pnpm-lock removed); scripts run Next under `bun --bun`. Pinned grammy 1.46.0, @supabase/ssr 0.12.7, supabase-js 2.117.2, server-only.
+- lib/supabase/{server,client,admin,middleware}.ts follow the getAll/setAll + getClaims pattern; middleware.ts protects everything except /login and /api/telegram.
+- Bot (lib/telegram/bot.ts, grammY): private chats only; /start calls ensureProfile (shadow auth user `telegram-<id>@users.do-mpet.invalid` plus profile, username kept in sync); /login shows the login hint. Webhook at app/api/telegram (secret-token checked by grammY). Local: `bun bot:dev` (long polling). Deploy: `bun bot:webhook <url>`.
+- Login (/login): Telegram username or numeric ID -> 6-digit code sent by the bot -> verified -> admin.generateLink(magiclink) + verifyOtp sets a normal Supabase session.
+- Migration 20260928013716_login_otp_functions (pushed): issue_login_otp / verify_login_otp, service_role only. Codes are HMAC-hashed and bound to the profile; 3 codes per 10 min, 5 attempts, a new code invalidates older ones, single-use.
+- Removed the old UI (app/actions.ts, lib/supabase.ts, components/form/modal-trx-add.tsx), which targeted the dropped schema; app/page.tsx is a minimal signed-in page.
+- Verified: tsc clean, `next build` ok, e2e against the live project with a throwaway user (cleaned up): 18/19 checks pass. The 19th was a wrong expectation in the test (a locked code returns `locked`, which is still a rejection).
+- Not committed (the user said never push to GitHub).
+
+## 2026-09-28 — claude (deploy)
+
+- The user pushed phase 1+2 to GitHub; Vercel deployed https://do-mpet-rizgust.vercel.app (new login page live).
+- Public sign-ups disabled in Supabase (by the user). Vercel env vars set from .env.production (gitignored).
+- Webhook set -> /api/telegram. Checked: no secret -> 401, correct secret -> 200, pending 0, no delivery errors. Local bot:dev stopped (it would delete the webhook).
+- Owner confirmed live login (@rizgust): profile created, OTP consumed on first attempt, session at 02:14Z.
+
+## 2026-09-28 — claude (phase 3: record entry)
+
+- Decisions (user): strict commands (not free-order parsing); a starter set on /start.
+- Migration 20260928022928_default_wallet_and_starter_data (pushed): profiles.default_wallet_id (composite FK, so it must be the user's own wallet; users may update it); seed_starter_data(p_user), idempotent, service_role only: Cash wallet (default) + Food/Transport/Bills/Shopping/Health/Fun/Other + Salary/Bonus/Gift. ensureProfile calls it on every /start and /login, so existing accounts get seeded on their next /start.
+- lib/money.ts parseAmount/formatIDR; lib/records/{command,resolve,repo,types}.ts. The repo always filters on user_id (the admin client bypasses RLS).
+- Bot: /add /income /categories /wallets /help, plus inline buttons (category picker, delete with confirm, open web). Callback ids are packed to 22-char base64url (64-byte limit).
+- Web: app/records/actions.ts (RLS client insert + Telegram notify, where a failed notify doesn't fail the save), add-record-form, home = form + 20 recent records with delete.
+- Tests: bun test 38/38 unit; e2e against the live project with fake Telegram updates: 25/25, 0 bot errors, test users cleaned up (includes crafted-callback cross-tenant attempts blocked). tsc clean, next build ok.
+- Not committed. The live Vercel deploy is still phase 2 until the user pushes.
+- Phase 3 live (0cbde90). Webhook re-set; command menu refreshed. @rizgust seeded (Cash wallet default, 10 categories); first real record: income 5jt via Telegram.
+
+## 2026-09-28 — claude (pricing)
+
+- Wrote pricing.md: paid-plan thresholds (Vercel Pro and Supabase Pro at the first paying customer; Gemini paid when 429s appear), unit economics, credit model (text 1 / receipt 3), draft plans (Free 10 credits/day; Pro Rp25.000/month or Rp250.000/year, 200/day), break-even ~29-35 Pro users, promo rules.
