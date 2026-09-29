@@ -61,3 +61,13 @@ onboarded via `pcctl onboard`
 - Tests: bun test 70/70; e2e with fake Telegram + real DB + real Gemini: 22/22, 0 bot errors, cleaned up. Measured cost: text ~263 µUSD (Rp4), receipt ~867 µUSD (Rp14).
 - Fixed along the way: a stale tsconfig.tsbuildinfo had hidden the new tsconfig target (now ES2020).
 - Not committed. GEMINI_API_KEY added to .env.production (gitignored) for the Vercel paste.
+
+## 2026-09-29 — claude (phase 4 live check)
+
+- Live on Vercel: free parse ok; AI text ("kopi 25k sama roti 15k") -> 2 records, 1 credit, 218 µUSD, ~4s; receipt ok on the 2nd try (1180 µUSD, about Rp19).
+- Bug: the receipt zod schema rejected negative discount lines, which caused attempt 1 to fail ("invalid output", 0 credits charged). Fixed locally: lenient schema moved to lib/ai/schemas.ts (tested), item names expanded, discount lines excluded from the summary, and zod issues now logged to usage_events.error. Awaiting push.
+
+## 2026-09-29 — claude (PRD review)
+
+- Reviewed prd.md against the live build. Decisions (user, all recommended): confirm only when unsure (receipts confirm first); Bahasa Indonesia; Telegram Mini App with initData auto sign-in plus deep links; IDR-only MVP but currency stored. Also: no health score, no swipe, no sub-categories in the MVP; merchant added; PRD budgets table replaces budget funds.
+- Appended prd.md §46 (decisions, built vs. missing, roadmap). tasks.md re-planned: phase 5 model alignment, 6 bot MVP, 7 mobile WebApp + Mini App, 8 billing, 9 PRD phase 2/3.

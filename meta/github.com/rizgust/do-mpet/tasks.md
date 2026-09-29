@@ -23,8 +23,6 @@ repo: do-mpet
 - [x] (done) Strict-command parser: /add and /income <amount> <category> [item] [@wallet]; amounts 25000/25.000/25k/25rb/1,5jt/2juta; direct insert, 0 credits
 - [x] (done) Web form insert scoped to user (RLS client) + recent records list with delete
 - [x] (done) New-record notification: bot reply for Telegram inserts, bot message for web inserts; buttons Category (picker), Delete (confirm), Open web
-- [ ] (open) Edit amount/item/date of an existing record (web edit page; bot "Edit" button links to it)
-- [ ] (open) Web management of wallets and categories (add, rename, archive, set default wallet, category -> budget)
 - [x] (done) Deploy phase 3 (pushed by the user as 0cbde90) + command menu refreshed via bot:webhook
 
 ## Phase 4: AI parsing (Gemini 3.5 Flash-Lite, since 2.5 is closed to new users; free tier until user count grows, then paid)
@@ -37,16 +35,38 @@ repo: do-mpet
 - [x] (done) Category learning (category_hints): an explicit choice via button or /add is remembered per item/merchant
 - [x] (done) Fix amount button (force-reply flow)
 - [x] (done) Webhook dedupe by update_id; AI work runs after the response via waitUntil
-- [ ] (open) Deploy phase 4: add GEMINI_API_KEY to Vercel env, push, run `bun bot:webhook https://do-mpet-rizgust.vercel.app` (command menu)
-- [ ] (open) Test a real Indonesian (IDR) receipt photo; so far tested only with a CHF receipt (correctly refused)
+- [x] (done) Deploy phase 4 (5f5ffb0); GEMINI_API_KEY on Vercel; webhook and command menu refreshed
+- [x] (done) Real Indomaret receipt: attempt 1 was rejected by over-strict validation (negative discount lines); attempt 2 saved Rp89.100 (lines sum Rp101.900; the user should confirm discounts)
+- [ ] (open) Deploy the receipt fixes (lenient schema with negative discount lines, readable item names, validation issues logged to usage_events.error): pushed by the user
 - [ ] (open) Prune telegram_updates rows older than ~7 days (pg_cron) once volume grows
 
-## Phase 5: Reports
-- [ ] (open) Web dashboard: records list + summary per user
-- [ ] (open) Bot commands /today /week /month (plain SQL, free)
-- [ ] (open) Free-form report questions -> AI picks a predefined report intent (no text-to-SQL)
+## Phase 5: Model alignment with prd.md (decisions in prd.md §46)
+- [ ] (open) Accounts: rename funds(kind=wallet) -> accounts with type (cash/bank/ewallet/credit_card/investment/other), currency (default IDR), is_active
+- [ ] (open) Budgets: per-category budgets table (amount, period monthly/weekly/yearly, start/end, alert_threshold) replacing budget funds + category.default_fund_id
+- [ ] (open) Categories: PRD defaults (12 expense + 6 income) with emoji icon + color + is_default for new users; keep existing users' categories
+- [ ] (open) User settings: currency (IDR), locale (id-ID), timezone, first_day_of_month
+- [ ] (open) Transactions: currency column; capture latency (telegram message date -> saved) for metric §44
+- [ ] (open) Transfer between accounts (schema supports it; add to repo + bot + web)
 
-## Phase 6: Billing
+## Phase 6: Bot MVP (prd.md §7-9, §24-25)
+- [ ] (open) Bahasa Indonesia copy through one translations file (lib/i18n)
+- [ ] (open) Confirmation policy: known category -> save + Undo; unknown category -> ask with buttons, save on tap; receipt -> Save / Fix amount before saving; AI text -> save + Undo
+- [ ] (open) Rich confirmation: emoji category, today's total, budget % for that category
+- [ ] (open) /today /month /budget /balance, /expense alias, /transfer
+- [ ] (open) Dashboard button -> deep link into the Mini App (budget/{id}, transaction/{id})
+- [ ] (open) Free-form report questions -> AI picks a predefined report (no text-to-SQL)
+
+## Phase 7: Mobile WebApp + Telegram Mini App (prd.md §5-6, §10-14, §21, §39-41)
+- [ ] (open) Telegram Mini App: validate initData signature server-side -> Supabase session (no OTP); OTP stays for browsers
+- [ ] (open) Mobile shell: bottom nav Home · Transactions · ＋ · Plan · More; Bahasa Indonesia
+- [ ] (open) Home dashboard: net balance, income/expense this month, top categories, budget bars (no health score in MVP)
+- [ ] (open) Transactions: grouped by day, search, filters, tap -> detail with edit (amount, item, merchant, category, account, date, note) and delete
+- [ ] (open) Add transaction screen (large amount, expense/income/transfer, "More options")
+- [ ] (open) Plan: budgets list + budget detail (spent/limit, daily spending, forecast)
+- [ ] (open) More: categories management, accounts management, basic report (month selector), settings
+- [ ] (open) First-run screen (prd.md §39)
+
+## Phase 8: Billing
 - [x] (done) Plans credit limits set: free 10, pro 100 (migration 20260928055345). Prices still to add in phase 6.
 - [ ] (open) plans, invoices (promo/unpaid/paid/waived), app_settings.billing_enforced switch
 - [ ] (open) Monthly invoice generation from usage_events; invoices created during promo stay waived (NOT payable after the switch; only usage after it is billed)
@@ -54,3 +74,6 @@ repo: do-mpet
 - [ ] (open) Admin page + /paid <invoice> bot command for manual payment
 - [ ] (open) Later: QRIS via payment gateway (Midtrans/Xendit) with webhook
 - [ ] (open) Before production / growth: upgrade Vercel to Pro (commercial use), consider Supabase Pro, move Gemini to the paid tier (enable billing on the same project; no code change)
+
+## Phase 9: PRD Phase 2 (prd.md §36), then Phase 3 (§37)
+- [ ] (open) Recurring transactions -> savings goals -> net worth -> CSV import/export -> personal benchmarks -> financial health
