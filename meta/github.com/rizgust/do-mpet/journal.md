@@ -71,3 +71,41 @@ onboarded via `pcctl onboard`
 
 - Reviewed prd.md against the live build. Decisions (user, all recommended): confirm only when unsure (receipts confirm first); Bahasa Indonesia; Telegram Mini App with initData auto sign-in plus deep links; IDR-only MVP but currency stored. Also: no health score, no swipe, no sub-categories in the MVP; merchant added; PRD budgets table replaces budget funds.
 - Appended prd.md §46 (decisions, built vs. missing, roadmap). tasks.md re-planned: phase 5 model alignment, 6 bot MVP, 7 mobile WebApp + Mini App, 8 billing, 9 PRD phase 2/3.
+
+## 2026-09-29 — claude (phase 5: model alignment)
+
+- Migration 20260929031247_prd_model_alignment (pushed; the first attempt failed on a revoke of an already-renamed column and rolled back cleanly): funds -> accounts (type, currency); budget funds and category/transaction budget links dropped (none existed); budgets table; categories icon/color/is_default, unique per kind, PRD defaults in Bahasa Indonesia via ensure_default_categories(); the owner's categories renamed and backfilled (records keep their ids; Cash balance still Rp4.845.900); profiles currency/locale/first_day_of_month; transactions currency/status/source_message_at; account_balances view counts confirmed records only.
+- Code: wallet -> account naming throughout; dictionary rules point at category slots, so Indonesian and English names both resolve; new keywords for Tempat Tinggal/Pendidikan/Keluarga/Perjalanan/Pribadi/Bisnis/Freelance/Investasi; "anak" dropped (a context word: "spp anak" should be Pendidikan).
+- Every bot insert records source_message_at (prd.md §44 capture latency).
+- tests/e2e/bot.e2e.ts kept in the repo as `bun run e2e`: 33/33 pass. Unit 81/81. tsc clean, build ok.
+- Live Vercel runs the old code against the new schema, so the bot is broken until the user pushes.
+
+## 2026-09-29 — claude (phase 6: bot MVP)
+
+- lib/i18n/id.ts holds all bot copy (Bahasa Indonesia); lib/telegram/render.ts renders a record per state (confirmed / pending-category / pending-receipt) with its keyboard; lib/telegram/reports.ts holds today/month/budget/balance/category reports plus confirmation extras (today's spend, budget line); lib/reports/summary.ts has the pure totals, budget states (prd.md §13 thresholds) and bar; lib/periods.ts gives today/month (first_day_of_month, payday cycles)/week/year in the user's timezone.
+- Confirmation policy (prd.md §46) implemented. Undo deletes immediately; old d:/y: buttons still work.
+- Commands: /today /month /budget [set] /balance /transfer /expense /accounts. Questions are routed through lib/ai/intent.ts (the AI picks a report, never computes).
+- Gemini: one retry on 5xx/network/timeout (not 429). This came from a transient error seen in e2e.
+- Tests: unit 91/91 (periods, summary added); e2e 44/44 (new: pending flow, learning, undo, budget line, reports, transfer, balances confirmed-only, AI question). tsc clean, build ok.
+- Not deployed: the user's phase 5 commits are local only (main ahead of origin by 5), so live is still broken until push.
+
+## 2026-09-29 — claude (deploy phases 5-6 + housekeeping)
+
+- The user pushed phases 5-6 (b35278e). Live: / redirects to /login, webhook 200 with secret, command menu re-published (Indonesian), 0 pending updates.
+- The user approved pruning. Migration 20260929034017_prune_housekeeping_cron (pushed): pg_cron 1.6.4 installed; job prune-housekeeping '0 20 * * *' (03:00 WIB) deletes telegram_updates older than 7 days and login_otps older than 1 day. Job body verified in a rolled-back transaction. Advisors clean.
+
+## 2026-09-29 — claude (auto-save pending records)
+
+- Decision (user): option C. Unanswered pending records are auto-saved after 24h; category-less ones go to Lainnya, receipts are saved as reviewed (they already have a category). Nothing is lost silently; the message says so and keeps Undo/Kategori/Jumlah.
+- Migration 20260929035122_expire_pending_records (pushed): transactions.telegram_message_id; pg_net; cron job expire-pending-records '5 * * * *' calls POST {vault do_mpet_app_url}/api/cron/expire-pending with Bearer {vault do_mpet_cron_secret}, only when stale pending rows exist. Vault secrets created (not in git). CRON_SECRET added to .env.local and .env.production.
+- lib/records/expire.ts (batch 100, only-still-pending update so a concurrent tap wins, edits the original message or sends a new one if it can't); route app/api/cron/expire-pending (timing-safe bearer check); middleware skips /api/cron.
+- showRecord stores the message id for pending records.
+- e2e now 48/48 (expiry: <24h untouched, >24h -> Lainnya, message edited, idempotent; scoped to the test user via onlyUserId so real users are never touched). Unit 91/91, build ok.
+
+## 2026-09-29 — claude (auto-save: activity-triggered instead of cron)
+
+- The user proposed triggering on activity instead of a schedule; agreed, because it has fewer moving parts. The only gap (a returning user opening the web first) is covered by running the same check on page load in phase 7.
+- Migration 20260929042011_expire_on_activity_drop_cron (pushed): unscheduled expire-pending-records, dropped pg_net, replaced the pending index with (user_id, created_at) where pending. Vault secrets do_mpet_app_url and do_mpet_cron_secret deleted; CRON_SECRET removed from the env files; /api/cron route deleted; the middleware matcher is back to api/telegram only. prune-housekeeping stays.
+- Bot middleware: after every update, afterResponse -> expireStaleForUser(userId): edits each original message and sends one "📦 N catatan lama otomatis disimpan…" notice.
+- e2e: expiry checks now go through real activity (/today): <24h untouched, next activity -> Lainnya, original edited, notice shown, idempotent. Suite ALL PASS; unit 91/91; build ok (a stale .next/types for the deleted route was cleared).
+- Note: the user's commit 736240b captured the new migration while it was still empty, so the current file must be committed too. Local main is 9 ahead of origin (nothing about cron was deployed).

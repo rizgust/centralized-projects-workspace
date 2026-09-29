@@ -37,26 +37,32 @@ repo: do-mpet
 - [x] (done) Webhook dedupe by update_id; AI work runs after the response via waitUntil
 - [x] (done) Deploy phase 4 (5f5ffb0); GEMINI_API_KEY on Vercel; webhook and command menu refreshed
 - [x] (done) Real Indomaret receipt: attempt 1 was rejected by over-strict validation (negative discount lines); attempt 2 saved Rp89.100 (lines sum Rp101.900; the user should confirm discounts)
-- [ ] (open) Deploy the receipt fixes (lenient schema with negative discount lines, readable item names, validation issues logged to usage_events.error): pushed by the user
-- [ ] (open) Prune telegram_updates rows older than ~7 days (pg_cron) once volume grows
+- [x] (done) Receipt fixes deployed (pushed by the user with phases 5-6, b35278e)
+- [x] (done) pg_cron job "prune-housekeeping" daily at 03:00 WIB: telegram_updates > 7 days, login_otps > 1 day (migration 20260929034017)
 
 ## Phase 5: Model alignment with prd.md (decisions in prd.md §46)
-- [ ] (open) Accounts: rename funds(kind=wallet) -> accounts with type (cash/bank/ewallet/credit_card/investment/other), currency (default IDR), is_active
-- [ ] (open) Budgets: per-category budgets table (amount, period monthly/weekly/yearly, start/end, alert_threshold) replacing budget funds + category.default_fund_id
-- [ ] (open) Categories: PRD defaults (12 expense + 6 income) with emoji icon + color + is_default for new users; keep existing users' categories
-- [ ] (open) User settings: currency (IDR), locale (id-ID), timezone, first_day_of_month
-- [ ] (open) Transactions: currency column; capture latency (telegram message date -> saved) for metric §44
-- [ ] (open) Transfer between accounts (schema supports it; add to repo + bot + web)
+- [x] (done) Accounts: funds -> accounts with type (cash/bank/ewallet/credit_card/investment/other) + currency; account_balances view (confirmed only)
+- [x] (done) Budgets: per-category budgets table (period weekly/monthly/yearly, alert_threshold, one active per category and period); budget funds removed (UI in phase 6/7)
+- [x] (done) Categories: PRD defaults in Bahasa Indonesia (12 expense + 6 income) with emoji icon, color, is_default; existing user renamed (Food->Makanan, ...) and backfilled; names unique per kind; dictionary uses category slots (ID + EN names)
+- [x] (done) User settings on profiles: currency IDR, locale id-ID, timezone, first_day_of_month
+- [x] (done) Transactions: currency, status (confirmed/pending, for the confirmation flow), source_message_at (capture latency, set by every bot insert)
+- [x] (done) Transfer: /transfer <amount> @from @to [note] (bot); web in phase 7
+
+- [x] (done) Regression suite in repo: `bun run e2e` (tests/e2e/bot.e2e.ts, 33 checks, real DB + Gemini, throwaway users); RECEIPT_PATH and E2E_SKIP_AI options
 
 ## Phase 6: Bot MVP (prd.md §7-9, §24-25)
-- [ ] (open) Bahasa Indonesia copy through one translations file (lib/i18n)
-- [ ] (open) Confirmation policy: known category -> save + Undo; unknown category -> ask with buttons, save on tap; receipt -> Save / Fix amount before saving; AI text -> save + Undo
-- [ ] (open) Rich confirmation: emoji category, today's total, budget % for that category
-- [ ] (open) /today /month /budget /balance, /expense alias, /transfer
+- [x] (done) Bahasa Indonesia bot copy via lib/i18n/id.ts (all bot strings; command menu in Indonesian)
+- [x] (done) Confirmation policy: known category -> saved + Undo; unknown -> pending + category buttons, saved on tap and learned; receipt -> pending review [Simpan][Jumlah][Kategori][Buang]; AI text -> saved + Undo
+- [x] (done) Rich confirmation: category emoji, today's spending, budget line (spent / limit, %, near/over state)
+- [x] (done) /today /month /budget (+ /budget <category> <amount> to set, 0 removes) /balance /transfer, /expense alias, /accounts (+ /wallets alias)
 - [ ] (open) Dashboard button -> deep link into the Mini App (budget/{id}, transaction/{id})
-- [ ] (open) Free-form report questions -> AI picks a predefined report (no text-to-SQL)
+- [x] (done) Report questions ("berapa pengeluaran makan bulan ini?") -> AI picks one fixed report; the DB computes the numbers; 1 credit
+
+- [x] (done) Unanswered pending records (decision C): auto-saved on the user's next bot activity after 24h (category-less -> Lainnya, receipts as reviewed); original message edited + short notice; no cron (user's call, 2026-09-29)
+- [x] (done) Phases 5-6 deployed (b35278e); webhook re-set, Indonesian command menu published
 
 ## Phase 7: Mobile WebApp + Telegram Mini App (prd.md §5-6, §10-14, §21, §39-41)
+- [ ] (open) Web/Mini App page load also runs expireStaleForUser (a returning user who opens the web first sees accurate numbers)
 - [ ] (open) Telegram Mini App: validate initData signature server-side -> Supabase session (no OTP); OTP stays for browsers
 - [ ] (open) Mobile shell: bottom nav Home · Transactions · ＋ · Plan · More; Bahasa Indonesia
 - [ ] (open) Home dashboard: net balance, income/expense this month, top categories, budget bars (no health score in MVP)
