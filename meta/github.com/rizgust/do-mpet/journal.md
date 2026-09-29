@@ -49,3 +49,15 @@ onboarded via `pcctl onboard`
 ## 2026-09-28 — claude (pricing)
 
 - Wrote pricing.md: paid-plan thresholds (Vercel Pro and Supabase Pro at the first paying customer; Gemini paid when 429s appear), unit economics, credit model (text 1 / receipt 3), draft plans (Free 10 credits/day; Pro Rp25.000/month or Rp250.000/year, 200/day), break-even ~29-35 Pro users, promo rules.
+- Gemini key verified (free tier). gemini-2.5-flash-lite returns 404 for new users, so the model is now gemini-3.5-flash-lite ($0.30/$2.50). pricing.md revised: text ~Rp4, receipt ~Rp22, receipt = 5 credits, Pro 100 credits/day.
+
+## 2026-09-28 — claude (phase 4: free-form input + AI)
+
+- Decision (user): plain messages in any word order, typical Indonesian style ("kopi susu 25k indomaret", "indomaret 25 kopisusu"), plus Fix amount. Gemini runs on Vercel in the same app.
+- Migration 20260928055345_freeform_ai_usage (pushed): transactions.merchant; category_hints plus learn_category_hint(); usage_events plus ai_credits_used_today() (Jakarta day); telegram_updates (dedupe); plans limits free 10 / pro 100.
+- Free parser: lib/records/{freeform,dictionary,categorize}.ts. Exactly one amount; bare number <1000 = thousands (the reply says so); ~40 Indonesian merchants with aliases and a 1-edit typo match; keyword stems (short ones whole-word only, e.g. tol/air); category order: learned hint > keyword > merchant default > Other.
+- AI: lib/ai/{gemini,extract,credits}.ts. REST generateContent with responseJsonSchema, temperature 0, zod re-validation, categories limited to the user's own. Text can give up to 10 records; a receipt gives one record (total), with line items in the note. Non-IDR receipts are refused. No-digit chit-chat skips AI.
+- Flow: credit check -> placeholder "⏳" -> afterResponse (waitUntil on Vercel) -> edit the placeholder into the confirmation. 429s are recorded as rate_limited with a friendly message.
+- Tests: bun test 70/70; e2e with fake Telegram + real DB + real Gemini: 22/22, 0 bot errors, cleaned up. Measured cost: text ~263 µUSD (Rp4), receipt ~867 µUSD (Rp14).
+- Fixed along the way: a stale tsconfig.tsbuildinfo had hidden the new tsconfig target (now ES2020).
+- Not committed. GEMINI_API_KEY added to .env.production (gitignored) for the Vercel paste.

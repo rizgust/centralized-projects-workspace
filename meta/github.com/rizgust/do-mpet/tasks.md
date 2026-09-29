@@ -27,13 +27,19 @@ repo: do-mpet
 - [ ] (open) Web management of wallets and categories (add, rename, archive, set default wallet, category -> budget)
 - [x] (done) Deploy phase 3 (pushed by the user as 0cbde90) + command menu refreshed via bot:webhook
 
-## Phase 4: AI parsing (Gemini 2.5 Flash-Lite; free tier until user count grows, then paid)
-- [ ] (open) Handle Gemini 429 / quota errors: log them, and the bot replies "AI is busy, use /add"; the 429 count is the trigger to switch to the paid tier
-- [ ] (open) Disclose in /start or a privacy note that free-text and receipt parsing is processed by Google Gemini (free-tier terms allow Google to use the data)
-- [ ] (open) Free-text fallback -> Gemini structured JSON output (responseSchema) -> validate with zod -> insert
-- [ ] (open) Receipt photo -> Gemini vision -> line items -> insert (confirm step before saving?)
-- [ ] (open) usage_events table (user_id, kind, model, input_tokens, output_tokens, cost_idr) from usageMetadata; model_prices table
-- [ ] (open) Daily credit limit per plan, checked before every AI call; rule-based input never blocked
+## Phase 4: AI parsing (Gemini 3.5 Flash-Lite, since 2.5 is closed to new users; free tier until user count grows, then paid)
+- [x] (done) Handle Gemini 429 / errors: usage_events status rate_limited/error; bot says "AI is busy, use /add"
+- [x] (done) Gemini disclosure in /start and /help
+- [x] (done) Order-free free parser ("kopi susu 25k indomaret", "indomaret 25 kopisusu", "+5jt gaji"); bare number <1000 = thousands; merchant dictionary + typo tolerance; AI only for no-amount/multi-amount text (JSON schema + zod, multi-record)
+- [x] (done) Receipt photo -> Gemini vision -> one record (total, merchant, date if within 90 days, line items in note); non-IDR receipts refused
+- [x] (done) usage_events (tokens, credits, cost_micro_usd, status); cost from usageMetadata
+- [x] (done) Daily credit limit per plan (free 10 / pro 100; text 1, receipt 5), checked before every AI call; free input never blocked; /usage command
+- [x] (done) Category learning (category_hints): an explicit choice via button or /add is remembered per item/merchant
+- [x] (done) Fix amount button (force-reply flow)
+- [x] (done) Webhook dedupe by update_id; AI work runs after the response via waitUntil
+- [ ] (open) Deploy phase 4: add GEMINI_API_KEY to Vercel env, push, run `bun bot:webhook https://do-mpet-rizgust.vercel.app` (command menu)
+- [ ] (open) Test a real Indonesian (IDR) receipt photo; so far tested only with a CHF receipt (correctly refused)
+- [ ] (open) Prune telegram_updates rows older than ~7 days (pg_cron) once volume grows
 
 ## Phase 5: Reports
 - [ ] (open) Web dashboard: records list + summary per user
@@ -41,7 +47,7 @@ repo: do-mpet
 - [ ] (open) Free-form report questions -> AI picks a predefined report intent (no text-to-SQL)
 
 ## Phase 6: Billing
-- [ ] (open) Migrate plans table to the draft pricing: free 10 credits/day, pro 200 credits/day, Rp25.000/month or Rp250.000/year (credit: text 1, receipt 3); see pricing.md
+- [x] (done) Plans credit limits set: free 10, pro 100 (migration 20260928055345). Prices still to add in phase 6.
 - [ ] (open) plans, invoices (promo/unpaid/paid/waived), app_settings.billing_enforced switch
 - [ ] (open) Monthly invoice generation from usage_events; invoices created during promo stay waived (NOT payable after the switch; only usage after it is billed)
 - [ ] (open) Enforcement when switch on: overdue invoice -> drop to free limits

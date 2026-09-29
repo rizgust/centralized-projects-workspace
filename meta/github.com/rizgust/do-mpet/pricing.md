@@ -3,6 +3,7 @@ org: rizgust
 repo: do-mpet
 status: draft (agreed 2026-09-28, not live)
 checked: 2026-09-28
+model: gemini-3.5-flash-lite (2.5 Flash-Lite is closed to new users)
 fx_assumption: Rp16.000 per USD
 ---
 
@@ -23,32 +24,34 @@ before acting on them (sources at the bottom).
 
 ## 2. Unit economics
 
-Gemini 2.5 Flash-Lite, paid tier: $0.10 per 1M input tokens (text/image), $0.40 per 1M output tokens.
+**Model: `gemini-3.5-flash-lite`.** `gemini-2.5-flash-lite` returns 404 "no longer available to new users" for this project (verified 2026-09-28), so 3.5 is the only Flash-Lite option.
+Paid tier: $0.30 per 1M input tokens (text/image/audio), $2.50 per 1M output tokens. Measured: no thinking tokens with default settings (a 59-token prompt gave a 35-token JSON reply).
 
 | Action | Tokens (approx.) | Cost |
 |---|---|---|
-| Free-text parse | ~400 in / ~150 out | ~Rp2 |
-| Receipt photo | ~2,000 in (image tiles + prompt) / ~400 out | ~Rp6 |
-| Heavy user per month (5 AI texts + 1 receipt a day) | | ~Rp500 |
+| Free-text parse | ~275 in / ~70 out; measured 250–265 µUSD | ~Rp4 |
+| Receipt photo | ~1,400 in (image + prompt) / ~200 out; measured 867 µUSD | ~Rp14 (estimate was Rp22) |
+| Heavy user per month (5 AI texts + 1 receipt a day) | | ~Rp1.300 |
 
-AI cost per user is negligible; fixed infrastructure dominates. **Price on value, not on AI cost.**
+AI cost per typical user is small next to fixed infrastructure, so **price on value, not on AI cost**. It does cap how generous the daily credit limits can be (see section 4).
 
 ## 3. Credit model (the daily AI allowance)
 
 - Free-text AI parse = **1 credit**
-- Receipt photo = **3 credits** (≈ 3× the cost of a text parse)
+- Receipt photo = **5 credits** (≈ 5× the cost of a text parse on 3.5 Flash-Lite)
 - Always free, 0 credits: `/add`, `/income`, web entry, `/categories`, `/wallets`, plain reports (`/today`, `/week`, `/month`)
 
 ## 4. Plans (draft)
 
 | Plan | Price | AI credits per day | Notes |
 |---|---|---|---|
-| **Free** | Rp0 | 10 (e.g. 10 texts, or 3 receipts + 1 text) | Worst case ~Rp600/month per free user |
-| **Pro** | **Rp25.000/month** or **Rp250.000/year** (2 months free) | 200 (fair use) | Room for Pro-only features later: budgets, export, multiple wallets (TBD) |
+| **Free** | Rp0 | 10 (e.g. 10 texts, or 2 receipts) | Worst case ~Rp1.200–2.100/month per free user |
+| **Pro** | **Rp25.000/month** or **Rp250.000/year** (2 months free) | 100 (fair use) | Room for Pro-only features later: budgets, export, multiple wallets (TBD) |
 
 - **Break-even:** ~29 monthly Pro users cover the Rp720.000 fixed cost; ~35 after payment-gateway fees (QRIS ≈ 0.7%).
 - **Price tests:** if early users pay easily, try Rp35.000/month.
-- **Watch free-tier abuse:** 1,000 maxed-out free users ≈ Rp600.000/month in AI.
+- **Pro limit reasoning:** a credit ≈ Rp4, so 100 credits/day is at most ~Rp12.000/month, leaving margin on Rp25.000. At 200/day a maxed-out Pro user would cost ~Rp24.000, almost the whole price.
+- **Watch free-tier abuse:** 1,000 maxed-out free users ≈ Rp1,2–2,1 juta/month in AI.
 
 ## 5. Promo and billing switch
 
@@ -58,8 +61,8 @@ AI cost per user is negligible; fixed infrastructure dominates. **Price on value
 
 ## 6. Not applied yet
 
-- DB `plans` rows still hold placeholders (free 100, pro 1000 credits/day, no prices). Migrate in phase 6 (see `tasks.md`).
-- Credit accounting (`usage_events`, daily limit check) is built in phase 4.
+- DB `plans` credit limits are applied (free 10, pro 100). Prices are not in the DB yet (phase 6).
+- Credit accounting is live in code (`usage_events`, `ai_credits_used_today`, check before every AI call).
 
 ## Sources (checked 2026-09-28)
 
