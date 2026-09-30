@@ -59,9 +59,17 @@ AI cost per typical user is small next to fixed infrastructure, so **price on va
 - `app_settings.billing_enforced` switches billing on. After that, **only new invoices are payable**; promo-period invoices are never billed retroactively.
 - Payment: manual at first (admin marks an invoice paid); QRIS via a payment gateway (Midtrans/Xendit) later.
 
-## 6. Not applied yet
+## 6. How it is implemented (live since phase 8)
 
-- DB `plans` credit limits are applied (free 10, pro 100). Prices are not in the DB yet (phase 6).
+- Upgrade: Lainnya → Paket & Tagihan, or `/pro` in the bot. Pro starts immediately.
+- Invoice status is fixed at creation by `app_settings.billing_enforced`: off (promo) → **waived**; on → **unpaid**, due after `grace_days` (default 7).
+- Renewal, overdue downgrade and expiry run on the user's own activity (bot message or web page load); inactive months are never back-billed.
+- Unpaid after due → Free. Admin marks paid on `/admin` or with `/paid DMP-000123 [ref]` → Pro restored for that period and the user is notified.
+- The switch, grace days and payment instructions are edited on `/admin` (owner account is admin).
+
+## 7. Not applied yet
+
+- Credit limits and prices are in the DB (plans table).
 - Credit accounting is live in code (`usage_events`, `ai_credits_used_today`, check before every AI call).
 
 ## Sources (checked 2026-09-28)

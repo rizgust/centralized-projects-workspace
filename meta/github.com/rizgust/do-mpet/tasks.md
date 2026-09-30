@@ -62,24 +62,41 @@ repo: do-mpet
 - [x] (done) Phases 5-6 deployed (b35278e); webhook re-set, Indonesian command menu published
 
 ## Phase 7: Mobile WebApp + Telegram Mini App (prd.md §5-6, §10-14, §21, §39-41)
-- [ ] (open) Web/Mini App page load also runs expireStaleForUser (a returning user who opens the web first sees accurate numbers)
-- [ ] (open) Telegram Mini App: validate initData signature server-side -> Supabase session (no OTP); OTP stays for browsers
-- [ ] (open) Mobile shell: bottom nav Home · Transactions · ＋ · Plan · More; Bahasa Indonesia
-- [ ] (open) Home dashboard: net balance, income/expense this month, top categories, budget bars (no health score in MVP)
-- [ ] (open) Transactions: grouped by day, search, filters, tap -> detail with edit (amount, item, merchant, category, account, date, note) and delete
-- [ ] (open) Add transaction screen (large amount, expense/income/transfer, "More options")
-- [ ] (open) Plan: budgets list + budget detail (spent/limit, daily spending, forecast)
-- [ ] (open) More: categories management, accounts management, basic report (month selector), settings
-- [ ] (open) First-run screen (prd.md §39)
+- [x] (done) App layout runs expireStaleForUser on every signed-in page load (settlePending)
+- [x] (done) Telegram Mini App sign-in: /tg reads initData -> POST /api/auth/telegram verifies the HMAC (bot token; with or without the signature field; max age 1h) -> ensureProfile + Supabase session; Dashboard buttons are web_app buttons; /start and /login get "Buka Dashboard"; menu button set by `bun bot:webhook`; OTP stays for browsers
+- [x] (done) Mini App sign-in deployed (74f5885); menu button set; e2e:miniapp 8/8 against production. Owner still to try in Telegram mobile + desktop
+- [x] (done) Mobile shell: app/(app) route group, bottom nav Home · Transaksi · ＋ · Rencana · Lainnya, safe areas, viewport-fit=cover, Bahasa Indonesia (lib/i18n/web.ts)
+- [x] (done) Home: net balance card, month income/expense + % left, top 4 categories, budget bars with state text, 5 recent; first-run screen when empty
+- [x] (done) Transaksi: month pill switcher (first_day_of_month aware), day groups with day totals, debounced search (item/merchant/note), kind chips + category filter, pending badge; detail = edit (amount, category, account(s), item, merchant, date, note) + delete; saving a pending record confirms it and learns the category
+- [x] (done) Tambah: big formatted amount, expense/income/transfer, category grid ordered by usage (top pre-selected), account(s), description, date, "Opsi lain"; Telegram echo; toast + reset
+- [x] (done) Rencana: budget list (bar, spent/limit, remaining/over, state text, days left) + add; detail (spent/limit, bar, period, linear forecast, daily spending, edit limit, remove)
+- [x] (done) Lainnya: profile + credits, Laporan (month pill, totals, daily column chart, category share bars), Kategori (tap-to-edit list, add, archive/restore), Akun (balances, type, default, add with opening balance, archive), Pengaturan (name, first day of month, default account)
+- [x] (done) First-run screen (prd.md §39) on Home when the user has no records
+
+- [x] (done) Deep link: record Dashboard button opens /transactions/<id> in the Mini App; login page in Bahasa Indonesia with a Telegram tip
+- [x] (done) Regression: `bun run e2e:web` (tests/e2e/web.e2e.ts + cdp.ts; drives Edge over CDP): screenshots of 13 screens at 390x844@2x, overflow + JS-error checks, 8 real form interactions verified in the DB
+- [x] (done) Phase 7 deployed (d4fcd78)
+- [ ] (open) Nice-to-have: Telegram theme colours / BackButton inside the Mini App; Rp prefix spacing in the amount field
 
 ## Phase 8: Billing
 - [x] (done) Plans credit limits set: free 10, pro 100 (migration 20260928055345). Prices still to add in phase 6.
-- [ ] (open) plans, invoices (promo/unpaid/paid/waived), app_settings.billing_enforced switch
-- [ ] (open) Monthly invoice generation from usage_events; invoices created during promo stay waived (NOT payable after the switch; only usage after it is billed)
-- [ ] (open) Enforcement when switch on: overdue invoice -> drop to free limits
-- [ ] (open) Admin page + /paid <invoice> bot command for manual payment
+- [x] (done) Billing schema: plan prices (Pro Rp25.000/month, Rp250.000/year), app_settings (billing_enforced, grace_days, payment_instructions), invoices (DMP-000123 numbers, waived/unpaid/paid/void), profiles plan_until/plan_interval/auto_renew
+- [x] (done) Invoices at upgrade/renewal: status follows the switch at creation (promo -> waived, never billed later); renewal on activity (settle_billing) starts today, so no back-billing; same-day re-upgrade reuses the same interval, voids the other
+- [x] (done) Enforcement: unpaid past due -> Free; marking paid restores Pro for that period; auto-renew off -> Free at period end; credit limits use the effective plan (expired Pro = Free)
+- [x] (done) Admin: /admin page (switch, grace days, payment instructions, unpaid list with "Tandai lunas", recent invoices) + /paid DMP-xxxxxx [ref] in the bot; owner notified on payment; is_admin re-checked server-side on every action
+- [x] (done) User side: Lainnya -> Paket & Tagihan (plan card, upgrade monthly/yearly, promo note, auto-renew toggle, invoices, payment instructions + code) and /pro in the bot; bot tells the user when Pro renews or ends
+- [x] (done) Tests: `bun run e2e:billing` (22 checks in a rolled-back transaction), `bun run e2e:web` billing flow (promo upgrade, admin switch on, unpaid yearly, instructions, mark paid; the global switch is always restored), bot /pro and /paid checks
+- [x] (done) Phase 8 deployed (ca9d220); command menu refreshed (adds /pro)
+- [ ] (open) Owner: set real payment instructions on /admin before turning billing on
 - [ ] (open) Later: QRIS via payment gateway (Midtrans/Xendit) with webhook
 - [ ] (open) Before production / growth: upgrade Vercel to Pro (commercial use), consider Supabase Pro, move Gemini to the paid tier (enable billing on the same project; no code change)
+
+## Ops (owner tooling)
+- [x] (done) Local-only admin app (admin/, `bun run admin` on 127.0.0.1:3100, desktop layout, Host check, no login, service role): health, billing switch + instructions, unpaid "mark paid", recent invoices, users. Removed /admin from the cloud app
+- [x] (done) Service health: service_health() SQL; lib/health thresholds (DB 80/95%, Gemini 429, >=30 Pro in promo, >=50 active, overdue, capture p50 > 5s) + Telegram alerts to admins (hourly, once per condition, reset when cleared; disabled in e2e)
+- [x] (done) Daily encrypted DB backup: .github/workflows/db-backup.yml (Supabase CLI roles/schema/data public+auth, completeness check, gpg AES256, 14-day artifacts) + docs/backup-restore.md; round-trip tested locally
+- [ ] (open) Owner: add GitHub secrets SUPABASE_DB_URL + BACKUP_PASSPHRASE (from .env.local), run db-backup once by hand, store the passphrase in a password manager
+- [ ] (open) Decide Vercel before public launch: Pro ($20/month) or move to Cloudflare (Hobby is non-commercial)
 
 ## Phase 9: PRD Phase 2 (prd.md §36), then Phase 3 (§37)
 - [ ] (open) Recurring transactions -> savings goals -> net worth -> CSV import/export -> personal benchmarks -> financial health

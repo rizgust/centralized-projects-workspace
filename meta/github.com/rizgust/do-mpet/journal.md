@@ -109,3 +109,38 @@ onboarded via `pcctl onboard`
 - Bot middleware: after every update, afterResponse -> expireStaleForUser(userId): edits each original message and sends one "📦 N catatan lama otomatis disimpan…" notice.
 - e2e: expiry checks now go through real activity (/today): <24h untouched, next activity -> Lainnya, original edited, notice shown, idempotent. Suite ALL PASS; unit 91/91; build ok (a stale .next/types for the deleted route was cleared).
 - Note: the user's commit 736240b captured the new migration while it was still empty, so the current file must be committed too. Local main is 9 ahead of origin (nothing about cron was deployed).
+- Pushed as a5a2a1f (main == origin). Live: / 307 -> login, webhook 200, 0 pending updates. The activity-triggered auto-save is in production; the migration file on origin has its full contents.
+
+## 2026-09-29 — claude (seamless dashboard: Telegram Mini App sign-in)
+
+- The user wants the dashboard to open without login. Done via a Mini App: lib/auth/telegram-webapp.ts (verifyInitData: HMAC-SHA256 with the key derived from "WebAppData" + bot token; accepts the check string with or without the newer signature field; auth_date at most 1h old and at most 60s in the future; safeNext against open redirects), app/api/auth/telegram (ensureProfile, so the first visit creates the account, then signInTelegramUser), app/tg (client page with telegram-web-app.js; falls back to /login outside Telegram). lib/auth/session.ts is shared with the OTP login.
+- Middleware: OPEN_PATHS /tg and /api/auth are always reachable (account switches); /login stays signed-out only.
+- Bot: record Dashboard button and /start, /login "Buka Dashboard" are web_app buttons (https only); set-webhook also sets the chat menu button to /tg.
+- Tests: unit 96/96 (5 initData tests); tests/e2e/miniapp.e2e.ts (`bun run e2e:miniapp` against a running app) 8/8 locally: tamper, missing, valid, cookies, open redirect, account created, / opens with cookies, redirects without; bot e2e ALL PASS; build ok.
+- Deployed 74f5885. bun bot:webhook set the menu button (web_app "Dashboard" -> /tg). e2e:miniapp against production: 8/8 (test user cleaned up).
+
+## 2026-09-29 — claude (phase 7: mobile WebApp)
+
+- The user asked for mobile-first (the old page targeted desktop). Rebuilt as an app/(app) route group with a bottom nav shell (prd.md §5/§41) and screens for Home, Transaksi (+detail/edit), Tambah, Rencana (+budget detail), Lainnya (Laporan, Kategori, Akun, Pengaturan). All copy in lib/i18n/web.ts (Bahasa Indonesia). Server actions in app/(app)/_actions/* use the RLS client only (except learnHints/notify, which use the admin client with the session user id).
+- Charts per the dataviz skill: single series, one ink colour, no legend, tap/hover values, the category list doubles as the table view; budget status colours are always paired with a text state.
+- Visual QA with real screenshots at 390x844 (Edge driven over raw CDP, since Playwright's pipe/ws transports fail under Bun on Windows). Found and fixed: truncated dates in recent rows (now Hari ini/Kemarin/28 Sep), over-budget shown by colour only, center + label offset, transfers missing accounts, alphabetical category grid (now by usage), month chevrons looking like Back (now a pill), a cluttered category editor (now tap-to-edit), and negative money shown as "Rp-84.100" (formatIDR now gives −Rp84.100).
+- tests/e2e/web.e2e.ts kept as `bun run e2e:web` (needs `bun run dev`): 13 screens without overflow or JS errors; 8/8 interactions (add, reset, edit, pending confirm, budget create, delete). Bot e2e ALL PASS (no AI), unit 96/96, tsc clean, build ok (16 routes).
+- Not committed.
+
+## 2026-09-29 — claude (phase 8: billing)
+
+- Migrations 20260929075126_billing, 20260929075317_billing_idempotent_invoice, 20260929080213_billing_same_day_interval (all pushed): prices, app_settings (single row), invoices, profile subscription state; functions start_pro / settle_billing / mark_invoice_paid / create_period_invoice (service_role only). The owner account was set to is_admin.
+- Two real bugs caught by the tests before any UI shipped: (1) a same-day re-upgrade hit the per-period unique constraint (now reuse); (2) the reuse then let a same-day yearly upgrade ride on a waived monthly invoice (now: reuse only for the same interval or if paid, otherwise void and reissue; uniqueness ignores void).
+- App: lib/billing (wrappers, effectivePlan, invoice codes); creditStatus uses the effective plan; bot activity middleware + web settlePending call settle_billing; /pro, admin /paid; web Paket & Tagihan + /admin; Lainnya shows Paket & Tagihan and Admin (admins only).
+- Tests: e2e:billing 22/22; e2e:web all pass incl. billing (switch restored to false afterwards); bot e2e ALL PASS (+/pro, /paid); unit 96/96; tsc clean; build ok.
+- Not committed.
+- Deployed ca9d220. bot:webhook refreshed the command menu (/pro) and the menu button. e2e:miniapp against production: ALL PASS. Signed-out /more/billing and /admin -> 307 login.
+
+## 2026-09-29 — claude (ops: local admin, health alerts, backups)
+
+- Decisions (user): selling while on free tiers is fine for now; Vercel is decided before public launch. The admin runs locally only (one-man project, managed from this machine), desktop size. The repo was made private during this session (verified: the GitHub API returns 404 anonymously).
+- admin/ = a separate Next app reusing lib/ and components/ (experimental.externalDir, env loaded from the repo root). `bun run admin` binds 127.0.0.1:3100; middleware 403s any non-local Host header; excluded from the web tsconfig and .vercelignore. The cloud /admin page and the "Admin" link were removed; /paid in the bot stays (admin-only).
+- Migration 20260929125114_service_health (pushed): app_settings.health_checked_at/health_alerts + service_health(). lib/health.ts evaluate() (unit tested) + checkHealthAndAlert() (atomic hourly claim) in the bot's after-reply middleware.
+- The backup workflow can't run until the secrets are set; BACKUP_PASSPHRASE was generated into .env.local.
+- Tests: unit 101/101, bot e2e ALL PASS, e2e:billing ALL PASS, web + admin tsc clean, web build ok. Admin verified at 127.0.0.1:3100 (200), foreign Host -> 403, screenshot at 1440px.
+- Not committed.
