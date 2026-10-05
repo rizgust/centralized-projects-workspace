@@ -16,6 +16,9 @@ type Worker struct {
 	TaskTitle *string `json:"taskTitle"`
 	Bubble    string  `json:"bubble"`
 	Queued    int     `json:"queued"`
+	// asking: an open owner question from this worker; they wait in the Owner's room
+	QuestionID *string `json:"questionId"`
+	Question   *string `json:"question"`
 }
 
 type Room struct {
@@ -30,16 +33,18 @@ type Office struct {
 	Rooms               []Room   `json:"rooms"`
 	HQ                  []Worker `json:"hq"`
 	InteractiveSessions int      `json:"interactiveSessions"`
+	OpenQuestions       int      `json:"openQuestions"`
 }
 
 func strp(s string) *string { return &s }
 
 // buildOffice derives each virtual worker's state, in priority order:
-// running agent run > blocked task > task in review > ready tasks queued > idle.
-func buildOffice(root string, cfg workspace.Config, runs []Run, interactive int) Office {
+// running agent run > open owner question (asking) > blocked task > task in review
+// > ready tasks queued > idle.
+func buildOffice(root string, cfg workspace.Config, runs []Run, questions []Question, interactive int) Office {
 	roles := workspace.Roles(root)
 	active := workspace.ActiveProject(root)
-	o := Office{Rooms: []Room{}, HQ: []Worker{}, InteractiveSessions: interactive}
+	o := Office{Rooms: []Room{}, HQ: []Worker{}, InteractiveSessions: interactive, OpenQuestions: len(questions)}
 	if active != "" {
 		o.Project = strp(active)
 	}
@@ -51,7 +56,7 @@ func buildOffice(root string, cfg workspace.Config, runs []Run, interactive int)
 		}
 		room := Room{Project: id, Name: name, Active: id == active}
 		for _, r := range roles {
-			room.Workers = append(room.Workers, workerFor(r, id, tasks, runs))
+			room.Workers = append(room.Workers, workerFor(r, id, tasks, runs, questions))
 		}
 		o.Rooms = append(o.Rooms, room)
 	}
@@ -61,7 +66,7 @@ func buildOffice(root string, cfg workspace.Config, runs []Run, interactive int)
 	return o
 }
 
-func workerFor(r workspace.RoleInfo, project string, tasks []workspace.Task, runs []Run) Worker {
+func workerFor(r workspace.RoleInfo, project string, tasks []workspace.Task, runs []Run, questions []Question) Worker {
 	w := Worker{Role: r.ID, Name: r.Name, State: "idle", Bubble: "zz"}
 	titleOf := func(id string) *string {
 		for _, t := range tasks {
@@ -85,6 +90,16 @@ func workerFor(r workspace.RoleInfo, project string, tasks []workspace.Task, run
 			w.Bubble = run.LastText
 			if w.Bubble == "" {
 				w.Bubble = "working"
+			}
+			return w
+		}
+	}
+	for _, q := range questions {
+		if q.Project == project && q.From == r.ID && q.Status == "open" {
+			w.State, w.Bubble, w.QuestionID, w.Question = "asking", "?", strp(q.ID), strp(q.Question)
+			w.TaskID = q.Task
+			if q.Task != nil {
+				w.TaskTitle = titleOf(*q.Task)
 			}
 			return w
 		}

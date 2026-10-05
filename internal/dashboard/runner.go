@@ -39,6 +39,8 @@ type Run struct {
 	LastText       string   `json:"lastText"`
 	Error          *string  `json:"error"`
 	Cwd            string   `json:"cwd"`
+	ParentRunID    *string  `json:"parentRunId"` // set when this run resumes an earlier run's session
+	QuestionID     *string  `json:"questionId"`  // the owner question this run answers
 }
 
 type RunEvent struct {
@@ -57,6 +59,12 @@ type RunRequest struct {
 	PermissionMode string  `json:"permissionMode"`
 	BudgetUSD      float64 `json:"budgetUsd"`
 	Model          *string `json:"model"`
+	Override       bool    `json:"override"` // launch even during a sholat window
+
+	// set internally when an owner answer resumes an earlier run's session
+	resumeSession string
+	parentRun     string
+	questionID    string
 }
 
 const maxEventsInMemory = 3000
@@ -66,20 +74,24 @@ type runState struct {
 	events []RunEvent
 	cmd    *exec.Cmd
 	seen   map[string]bool // assistant message ids already counted
+	final  string          // the result event's text, for owner-question detection
 }
 
 type runner struct {
 	root     string
 	dir      string
+	qdir     string
 	onChange func()
 	onEvent  func(runID string, ev RunEvent)
+	onFinish func(run Run, finalText string)
 
 	mu   sync.Mutex
 	runs map[string]*runState
 }
 
 func newRunner(root string, onChange func(), onEvent func(string, RunEvent)) *runner {
-	r := &runner{root: root, dir: filepath.Join(root, "runtime", "runs"), onChange: onChange, onEvent: onEvent, runs: map[string]*runState{}}
+	r := &runner{root: root, dir: filepath.Join(root, "runtime", "runs"), onChange: onChange, onEvent: onEvent, runs: map[string]*runState{},
+		qdir: filepath.Join(root, "runtime", "agent-messages", "owner")}
 	_ = os.MkdirAll(r.dir, 0o755)
 	r.load()
 	return r
@@ -259,26 +271,39 @@ func (r *runner) start(cfg workspace.Config, req RunRequest) (Run, error) {
 		}
 	}
 
+	runID := time.Now().Format("20060102-150405") + "-" + req.Role
+	sessionID := uuid.NewString()
+	if req.resumeSession != "" {
+		sessionID = req.resumeSession
+	}
+	taskRef := "null"
+	if req.TaskID != nil && *req.TaskID != "" {
+		taskRef = *req.TaskID
+	}
 	agents, _ := json.Marshal(map[string]map[string]string{req.Role: {"description": desc, "prompt": agentPrompt}})
 	system := strings.Join([]string{
 		"Workspace root (all role/policy paths are relative to it): " + r.root,
 		"Active project for this run: " + req.Project + ". Project knowledge: " + filepath.Join(r.root, filepath.FromSlash(p.ProjectPath)) + ". Repository: " + filepath.Join(r.root, filepath.FromSlash(p.RepoPath)) + ".",
 		taskLine,
 		"You were launched headless from the Projects-Centralized dashboard. Follow AGENTS.md. Never commit or push. When you finish, update the task file's notes and status as your role definition says, and end with a short report of what changed and what you verified.",
+		ownerQuestionPrompt(r.qdir, req.Project, req.Role, runID, sessionID, taskRef),
 	}, "\n")
 	prompt := req.Prompt
 	if strings.TrimSpace(prompt) == "" {
 		prompt = "Work on the task described in your instructions."
 	}
 
-	sessionID := uuid.NewString()
 	args := []string{"-p", "--output-format", "stream-json", "--verbose",
 		"--agents", string(agents), "--agent", req.Role,
 		"--permission-mode", req.PermissionMode,
 		"--max-budget-usd", strconv.FormatFloat(req.BudgetUSD, 'f', 2, 64),
-		"--session-id", sessionID,
 		"--add-dir", r.root,
 		"--append-system-prompt", system,
+	}
+	if req.resumeSession != "" {
+		args = append(args, "--resume", sessionID)
+	} else {
+		args = append(args, "--session-id", sessionID)
 	}
 	if req.Model != nil && *req.Model != "" {
 		args = append(args, "--model", *req.Model)
@@ -302,11 +327,17 @@ func (r *runner) start(cfg workspace.Config, req RunRequest) (Run, error) {
 	now := time.Now().Format(time.RFC3339)
 	pid := cmd.Process.Pid
 	st := &runState{cmd: cmd, seen: map[string]bool{}, run: Run{
-		ID: time.Now().Format("20060102-150405") + "-" + req.Role, Project: req.Project, Role: req.Role,
+		ID: runID, Project: req.Project, Role: req.Role,
 		TaskID: req.TaskID, Prompt: prompt, Status: "running", PermissionMode: req.PermissionMode,
 		BudgetUSD: req.BudgetUSD, Model: req.Model, StartedAt: now, SessionID: sessionID,
 		PID: &pid, LastActivity: now, LastText: "starting", Cwd: cwd,
 	}}
+	if req.parentRun != "" {
+		st.run.ParentRunID = strp(req.parentRun)
+	}
+	if req.questionID != "" {
+		st.run.QuestionID = strp(req.questionID)
+	}
 	r.mu.Lock()
 	r.runs[st.run.ID] = st
 	r.save(st)
@@ -415,6 +446,9 @@ func (r *runner) readStdout(st *runState, rd interface{ Read([]byte) (int, error
 			}
 			r.mu.Unlock()
 			text := l.Result
+			r.mu.Lock()
+			st.final = text
+			r.mu.Unlock()
 			if text == "" {
 				text = l.Subtype
 			}
@@ -472,7 +506,11 @@ func (r *runner) finish(st *runState, err error) {
 	}
 	st.run.LastText = st.run.Status
 	r.save(st)
+	run, final := st.run, st.final
 	r.mu.Unlock()
+	if r.onFinish != nil {
+		r.onFinish(run, final)
+	}
 	r.onChange()
 }
 

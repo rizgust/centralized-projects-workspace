@@ -31,6 +31,9 @@ import (
 	"github.com/rizgust/centralized-projects-workspace/web"
 )
 
+// errHandled tells the route wrapper the handler already wrote its response.
+var errHandled = errors.New("handled")
+
 type Options struct {
 	Port int
 	Dev  bool // allow the Vite dev server (localhost:5173) and expose /api/dev-token
@@ -44,6 +47,7 @@ type server struct {
 	runs  *runner
 	usage *usageIndex
 	sys   *sysmon
+	qs    *questionStore
 
 	mu         sync.Mutex
 	lastOffice []byte
@@ -70,6 +74,11 @@ func Serve(root string, opt Options) error {
 	s.runs = newRunner(root, s.runsChanged, func(id string, ev RunEvent) {
 		s.hub.publish("run-event", map[string]any{"runId": id, "event": ev})
 	})
+	s.qs = newQuestionStore(root)
+	s.runs.onFinish = func(run Run, final string) {
+		s.qs.autoQuestion(run, final)
+		s.hub.publish("questions", s.qs.list())
+	}
 	s.usage = newUsageIndex(root, projectOfCwd(root, s.cfg), s.runs.runOfSession)
 	s.sys = newSysmon(s.runs.pidRun)
 
@@ -108,6 +117,9 @@ func (s *server) loops(ctx context.Context) {
 	defer usageT.Stop()
 	defer watchT.Stop()
 	tick, sig := 0, s.workspaceSig()
+	prayerT := time.NewTicker(10 * time.Second)
+	defer prayerT.Stop()
+	lastPrayer := ""
 	s.sys.sample(true)
 	for {
 		select {
@@ -120,10 +132,21 @@ func (s *server) loops(ctx context.Context) {
 			s.usage.scan()
 			s.hub.publish("usage", map[string]any{"today": s.usage.report(1).Today})
 			s.publishOffice() // interactive session count may change
+		case <-prayerT.C:
+			st := prayerStatus(loadPrayerConfig(s.root), time.Now())
+			key := ""
+			if st.Active != nil {
+				key = st.Active.Name + st.Active.StartedAt
+			}
+			if key != lastPrayer {
+				lastPrayer = key
+				s.hub.publish("prayer", st)
+			}
 		case <-watchT.C:
 			if ns := s.workspaceSig(); ns != sig {
 				sig = ns
-				s.hub.publish("workspace", map[string]any{"changed": []string{"projects", "tasks", "active"}})
+				s.hub.publish("workspace", map[string]any{"changed": []string{"projects", "tasks", "active", "questions"}})
+				s.hub.publish("questions", s.qs.list())
 				s.publishOffice()
 			}
 		}
@@ -140,6 +163,11 @@ func (s *server) workspaceSig() string {
 	}
 	add(filepath.Join(s.root, "workspace.yaml"))
 	add(filepath.Join(s.root, "active-project.yaml"))
+	if qf, err := filepath.Glob(filepath.Join(s.qs.dir, "*.yaml")); err == nil {
+		for _, f := range qf {
+			add(f)
+		}
+	}
 	_ = filepath.WalkDir(filepath.Join(s.root, "projects"), func(p string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
 			add(p)
@@ -155,7 +183,7 @@ func (s *server) runsChanged() {
 }
 
 func (s *server) office() Office {
-	return buildOffice(s.root, s.cfg(), s.runs.list(), s.usage.liveInteractive())
+	return buildOffice(s.root, s.cfg(), s.runs.list(), s.qs.open(), s.usage.liveInteractive())
 }
 
 func (s *server) publishOffice() {
@@ -230,6 +258,9 @@ func (s *server) routes() http.Handler {
 	h := func(pattern string, fn func(w http.ResponseWriter, r *http.Request) (any, error)) {
 		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 			v, err := fn(w, r)
+			if errors.Is(err, errHandled) {
+				return
+			}
 			if err != nil {
 				code := http.StatusBadRequest
 				if strings.Contains(err.Error(), "not found") || strings.HasPrefix(err.Error(), "unknown") {
@@ -362,7 +393,91 @@ func (s *server) routes() http.Handler {
 		if err := readJSON(r, &req); err != nil {
 			return nil, err
 		}
+		pc := loadPrayerConfig(s.root)
+		if st := prayerStatus(pc, time.Now()); st.Active != nil && pc.HoldLaunches && !req.Override {
+			end, _ := time.Parse(time.RFC3339, st.Active.EndsAt)
+			writeErr(w, http.StatusLocked, fmt.Errorf("launches are held for sholat %s until %s; retry with override to launch anyway",
+				st.Active.Name, end.Format("15:04")))
+			return nil, errHandled
+		}
 		return s.runs.start(s.cfg(), req)
+	})
+	h("GET /api/questions", func(w http.ResponseWriter, r *http.Request) (any, error) {
+		return s.qs.list(), nil
+	})
+	h("POST /api/questions/{id}/answer", func(w http.ResponseWriter, r *http.Request) (any, error) {
+		var req struct {
+			Answer   string `json:"answer"`
+			Resume   bool   `json:"resume"`
+			Override bool   `json:"override"`
+		}
+		if err := readJSON(r, &req); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(req.Answer) == "" {
+			return nil, errors.New("answer is required")
+		}
+		qu, err := s.qs.get(r.PathValue("id"))
+		if err != nil {
+			return nil, err
+		}
+		if qu.Status != "open" {
+			return nil, fmt.Errorf("question %s is already %s", qu.ID, qu.Status)
+		}
+		now := time.Now().Format(time.RFC3339)
+		qu.Status, qu.Answer, qu.AnsweredAt = "answered", &req.Answer, &now
+		var resumed *Run
+		if req.Resume {
+			if qu.SessionID == nil || *qu.SessionID == "" {
+				return nil, errors.New("this question has no session to resume; answer without resume")
+			}
+			pc := loadPrayerConfig(s.root)
+			if st := prayerStatus(pc, time.Now()); st.Active != nil && pc.HoldLaunches && !req.Override {
+				end, _ := time.Parse(time.RFC3339, st.Active.EndsAt)
+				writeErr(w, http.StatusLocked, fmt.Errorf("launches are held for sholat %s until %s; retry with override", st.Active.Name, end.Format("15:04")))
+				return nil, errHandled
+			}
+			mode, budget := "acceptEdits", 2.0
+			var model *string
+			parent := ""
+			if qu.RunID != nil {
+				if prev, ok := s.runs.get(*qu.RunID); ok {
+					mode, budget, model, parent = prev.PermissionMode, prev.BudgetUSD, prev.Model, prev.ID
+				}
+			}
+			run, err := s.runs.start(s.cfg(), RunRequest{
+				Project: qu.Project, Role: qu.From, TaskID: qu.Task, PermissionMode: mode, BudgetUSD: budget, Model: model,
+				Prompt:        "The Owner answered your question.\n\nQuestion: " + qu.Question + "\n\nAnswer: " + req.Answer + "\n\nContinue your work with this decision.",
+				resumeSession: *qu.SessionID, parentRun: parent, questionID: qu.ID,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("answer not saved: could not resume the run: %w", err)
+			}
+			qu.ResumedRun = &run.ID
+			resumed = &run
+		}
+		if err := s.qs.save(qu); err != nil {
+			return nil, err
+		}
+		s.hub.publish("questions", s.qs.list())
+		s.publishOffice()
+		return map[string]any{"question": qu, "run": resumed}, nil
+	})
+	h("POST /api/questions/{id}/dismiss", func(w http.ResponseWriter, r *http.Request) (any, error) {
+		qu, err := s.qs.get(r.PathValue("id"))
+		if err != nil {
+			return nil, err
+		}
+		qu.Status = "dismissed"
+		if err := s.qs.save(qu); err != nil {
+			return nil, err
+		}
+		s.hub.publish("questions", s.qs.list())
+		s.publishOffice()
+		return qu, nil
+	})
+	h("GET /api/prayer", func(w http.ResponseWriter, r *http.Request) (any, error) {
+		return prayerStatus(loadPrayerConfig(s.root), time.Now()), nil
 	})
 	h("POST /api/runs/{id}/stop", func(w http.ResponseWriter, r *http.Request) (any, error) {
 		return s.runs.stop(r.PathValue("id"))
@@ -414,7 +529,8 @@ func (s *server) events(w http.ResponseWriter, r *http.Request) {
 	for _, ev := range []struct {
 		name string
 		data any
-	}{{"system", s.sys.snapshot()}, {"runs", s.runs.list()}, {"office", s.office()}} {
+	}{{"system", s.sys.snapshot()}, {"runs", s.runs.list()}, {"office", s.office()},
+		{"prayer", prayerStatus(loadPrayerConfig(s.root), time.Now())}, {"questions", s.qs.list()}} {
 		b, _ := json.Marshal(ev.data)
 		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.name, b)
 	}
