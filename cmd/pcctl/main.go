@@ -1,13 +1,15 @@
 // pcctl is the CLI for Projects-Centralized: it builds the gitignored parts
 // of the workspace (repos/<id> clones, worktrees/, runtime/) from
-// workspace.yaml and validates the workspace files.
+// workspace.yaml, validates the workspace files, and serves the local dashboard.
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/rizgust/centralized-projects-workspace/internal/dashboard"
 	"github.com/rizgust/centralized-projects-workspace/internal/workspace"
 )
 
@@ -50,6 +52,8 @@ func main() {
 		cmdInit(root, os.Args[2:])
 	case "check":
 		cmdCheck(root)
+	case "dashboard":
+		cmdDashboard(root, os.Args[2:])
 	default:
 		usage()
 		os.Exit(1)
@@ -60,7 +64,8 @@ func usage() {
 	fmt.Println(`usage: pcctl <command>
 
   init [--dry-run] [--no-clone] clone missing repos/<id>, create worktrees/ and runtime/
-  check                         validate workspace.yaml, project files, repos and task states`)
+  check                         validate workspace.yaml, project files, repos and task states
+  dashboard [--port 7777] [--dev]   serve the local dashboard on 127.0.0.1`)
 }
 
 func fatal(err error) {
@@ -105,4 +110,14 @@ func cmdCheck(root string) {
 		os.Exit(1)
 	}
 	fmt.Printf("ok: %d project(s)\n", len(c.Projects))
+}
+
+func cmdDashboard(root string, args []string) {
+	fs := flag.NewFlagSet("dashboard", flag.ExitOnError)
+	port := fs.Int("port", 7777, "port on 127.0.0.1")
+	dev := fs.Bool("dev", false, "allow the Vite dev server on localhost:5173 and expose /api/dev-token")
+	_ = fs.Parse(args)
+	if err := dashboard.Serve(root, dashboard.Options{Port: *port, Dev: *dev}); err != nil {
+		fatal(err)
+	}
 }
