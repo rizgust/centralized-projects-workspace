@@ -32,6 +32,12 @@ Paths are relative to the repository root, which is also the workspace root.
     activating or registering projects, and launching or stopping agent runs. Treat those
     file changes as Owner decisions. A run launched from the dashboard gets its project,
     task file and these rules in its system prompt.
+21. When you need the Owner's decision or information to continue, ask; never guess on
+    material choices. Write `runtime/agent-messages/owner/Q-<yyyymmdd-hhmmss>-<role>.yaml`
+    (keys: id, from, project, task, run_id, session_id, question, context, options,
+    status: open, answer: null, asked_at, answered_at: null, source: agent), then stop.
+    The dashboard shows you waiting in the Owner's room, and the answer resumes your
+    session. In an interactive session, also ask in the chat.
 
 ## Allowed paths when a project is active
 

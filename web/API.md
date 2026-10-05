@@ -63,6 +63,8 @@ interface Run {
   tokens: Tokens; numTurns: number;
   lastActivity: string; lastText: string;   // last assistant text or tool name, for bubbles
   error: string | null;
+  parentRunId: string | null;   // this run resumed parentRunId's session
+  questionId: string | null;    // the owner question this run continues from
 }
 
 interface RunEvent {
@@ -71,18 +73,31 @@ interface RunEvent {
   text: string; tool?: string;
 }
 
-type WorkerState = "working" | "blocked" | "review" | "waiting" | "idle";
+type WorkerState = "working" | "asking" | "blocked" | "review" | "waiting" | "idle";
 interface Worker {
   role: Role; name: string; state: WorkerState;
   runId: string | null; taskId: string | null; taskTitle: string | null;
   bubble: string;                // short text: tool name, "TASK-012", "zz", "!"
   queued: number;                // ready tasks owned by this role
+  questionId: string | null;     // set when state = "asking"
+  question: string | null;
 }
 interface Office {
   project: string | null;        // null = HQ (no project selected / none registered)
   rooms: { project: string; name: string; active: boolean; workers: Worker[] }[];
   hq: Worker[];                  // roles with no project context (shown when rooms is empty)
   interactiveSessions: number;   // live interactive Claude Code sessions in the workspace
+  openQuestions: number;
+}
+
+interface Question {
+  id: string; from: Role; project: string; task: string | null;
+  runId: string | null; sessionId: string | null;
+  question: string; context: string; options: string[];
+  status: "open" | "answered" | "dismissed";
+  answer: string | null; askedAt: string; answeredAt: string | null;
+  resumedRun: string | null;
+  source: "agent" | "auto";   // auto = detected from a run that ended on a question
 }
 
 interface SessionInfo {
@@ -136,9 +151,41 @@ interface SystemHistory { points: { t: string; cpu: number; mem: number }[] }   
 | GET | `/api/usage` | `?days=30` (1–365) | `Usage` |
 | GET | `/api/system` | | `SystemSnapshot` |
 | GET | `/api/system/history` | | `SystemHistory` |
+| GET | `/api/prayer` | | `PrayerStatus` |
+| GET | `/api/questions` | | `Question[]` (open first, newest first) |
+| POST | `/api/questions/{id}/answer` | `{answer, resume?: boolean, override?: boolean}` | `{question: Question, run: Run \| null}` |
+| POST | `/api/questions/{id}/dismiss` | | `Question` |
 | GET | `/api/events` | `?token=` (SSE) | event stream, below |
 
 Starting a run with a `taskId` whose task is `backlog`/`ready` moves the task to `active`.
+
+Worker state priority: working > asking > blocked > review > waiting > idle. An agent asks
+the Owner by writing `runtime/agent-messages/owner/<id>.yaml` (the run's system prompt
+explains the format) and ending its turn. If a run ends with a final paragraph that is a
+question and filed nothing, an `auto` question is created. Answering with `resume: true`
+starts a new run on the same Claude session (`--resume`), with the answer as the prompt.
+Resuming is subject to the sholat launch hold, like any other launch.
+
+During an active sholat window (`PrayerStatus.active` set and `config.holdLaunches`),
+`POST /api/runs` returns **423 Locked** with `{error}` naming the prayer and the time the
+hold ends. Send `override: true` in the body to launch anyway.
+
+```ts
+interface PrayerTime { name: "subuh" | "dzuhur" | "ashar" | "maghrib" | "isya"; at: string; hhmm: string }
+interface PrayerStatus {
+  config: { city: string; lat: number; lon: number; timezone: string; fajrAngle: number;
+            ishaAngle: number; asrFactor: number; elevationM: number; ihtiyatMin: number;
+            windowMin: number; holdLaunches: boolean; enabled: boolean };
+  date: string;            // YYYY-MM-DD, local to config.timezone
+  sunrise: string;         // HH:MM
+  times: PrayerTime[];     // today's five prayers in order
+  next: PrayerTime | null; // next adhan (tomorrow's subuh after isya)
+  active: { name: string; startedAt: string; endsAt: string } | null;
+}
+```
+
+Prayer times are computed offline (Kemenag RI parameters, configured under `prayer:` in
+`workspace.yaml`; verified against Bimas Islam schedules for Malang).
 
 ## Server-sent events (`/api/events`)
 
@@ -150,3 +197,5 @@ Starting a run with a `taskId` whose task is `backlog`/`ready` moves the task to
 | `workspace` | `{ changed: ("projects"\|"tasks"\|"active")[] }` | workspace files changed on disk |
 | `office` | `Office` | whenever worker states change |
 | `usage` | `{ today: UsageRow }` | after each usage rescan (every 30 s) |
+| `prayer` | `PrayerStatus` | on connect, and whenever a sholat window opens or closes |
+| `questions` | `Question[]` | on connect, and whenever a question is filed, answered or dismissed |

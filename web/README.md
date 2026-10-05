@@ -52,9 +52,13 @@ In production the server must fill `<meta name="pc-token" content="">` in `dist/
 | `src/api/types.ts` | TS types mirroring `API.md` |
 | `src/api/client.ts` | typed fetch client, token handling, SSE with reconnect backoff |
 | `src/store.tsx` | live state (SSE → React context), toasts, global dialogs, `useRunEvents` |
-| `src/office/pixel.ts` | palette, 3×5 bitmap font, palette-indexed worker sprites |
-| `src/office/scene.ts` | office layout, cached background, per-frame drawing, hit-testing |
-| `src/office/OfficeCanvas.tsx` | canvas component: integer DPR scaling, rAF loop, hover/click |
+| `src/office/world.ts` | office map: rooms, corridors, furniture into a cached background; nav graph + seats |
+| `src/office/props.ts` | floors, walls, wall decor, furniture drawing |
+| `src/office/sim.ts` | virtual workers: state -> spot, waypoint walking, idle wandering |
+| `src/office/render.ts` | per-frame layer: monitors, LEDs, depth-sorted characters, bubbles |
+| `src/office/characters.ts` | sprite-atlas renderer (`sprites/agents.png/json`, male/female variants) + fallback |
+| `src/office/sprites.ts` | procedural fallback characters |
+| `src/office/OfficeCanvas.tsx` | camera (integer zoom 1-4x, fit, wheel, drag-pan), HUD, agent-style control |
 | `src/components/charts.tsx` | hand-rolled SVG charts (columns, bars, line, meter) |
 | `src/components/` | dialogs, run log, pixel avatar, shared UI |
 | `src/pages/` | one file per page |
