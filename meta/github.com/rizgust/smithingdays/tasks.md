@@ -1,5 +1,0 @@
----
-org: rizgust
-repo: smithingdays
----
-
