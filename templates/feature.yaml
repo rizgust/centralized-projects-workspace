@@ -1,0 +1,21 @@
+id: null
+
+title: null
+
+status: analysis   # idea | analysis | requirements | system-design | task-planning | ready | implementation | review | validation | completed
+
+goal: null
+
+requested_by: owner
+
+requirements: []
+
+constraints: []
+
+affected_systems: []
+
+risks: []
+
+tasks: []
+
+owner_decisions: []

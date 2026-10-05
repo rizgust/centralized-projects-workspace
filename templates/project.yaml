@@ -1,0 +1,54 @@
+id: null
+
+name: null
+
+classification: personal   # personal | work
+
+type: null                 # web-application | backend-service | game | template | ...
+
+repository:
+  path: null               # relative to this project directory, e.g. ../../repos/<project-id>
+  remote: null
+  default_branch: main
+  working_branch: null
+
+legacy_records: null       # where earlier records of this project live, if any
+
+stack:
+  languages: []
+  frameworks: []
+  databases: []
+  infrastructure: []
+
+commands:
+  install: null
+  development: null
+  test: null
+  lint: null
+  typecheck: null
+  build: null
+
+context:
+  product: PROJECT.md
+  requirements: requirements/
+  architecture: architecture/
+  decisions: decisions/
+  uiux: uiux/
+
+agent_policy:
+  allow_direct_main_branch_changes: false
+  require_task: true
+  require_tests: true
+  require_review: true
+  require_owner_request_for_commit: true
+
+security:
+  secrets_access: false
+  production_access: false
+  destructive_database_operations: false
+
+infrastructure:
+  monthly_budget: unknown
+  current_monthly_cost: unknown
+  expected_users: unknown
+  expected_peak_load: unknown

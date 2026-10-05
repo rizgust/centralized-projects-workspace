@@ -1,0 +1,46 @@
+id: TASK-000
+
+title: null
+
+feature: null
+
+status: backlog          # backlog | ready | active | review | blocked | completed | cancelled
+
+owner: null              # analyst | project-manager | uiux | frontend | backend | infra
+
+weight: null             # 1 | 2 | 3 | 5 | 8 | 13
+
+priority: normal         # low | normal | high | urgent
+
+risk: low                # low | medium | high
+
+description: |
+  ...
+
+requirements: []
+
+acceptance_criteria: []
+
+dependencies: []
+
+blocks: []
+
+collaborators: []
+
+reviewers: []
+
+files_expected: []
+
+worktree:
+  required: false
+  path: null
+
+git:
+  branch: agent/TASK-000
+  commit: null
+
+created_by: analyst
+
+assigned_by: project-manager
+
+notes: []
