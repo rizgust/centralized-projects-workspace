@@ -95,6 +95,10 @@ export interface Run {
   lastActivity: string;
   lastText: string;
   error: string | null;
+  /** this run resumed parentRunId's session */
+  parentRunId?: string | null;
+  /** the owner question this run continues from */
+  questionId?: string | null;
 }
 
 export type RunEventKind = "system" | "assistant_text" | "tool_use" | "tool_result" | "result" | "stderr";
@@ -107,7 +111,7 @@ export interface RunEvent {
   tool?: string;
 }
 
-export type WorkerState = "working" | "blocked" | "review" | "waiting" | "idle";
+export type WorkerState = "working" | "asking" | "blocked" | "review" | "waiting" | "idle";
 
 export interface Worker {
   role: Role;
@@ -118,6 +122,9 @@ export interface Worker {
   taskTitle: string | null;
   bubble: string;
   queued: number;
+  /** set when state = "asking" */
+  questionId?: string | null;
+  question?: string | null;
 }
 
 export interface OfficeRoom {
@@ -132,6 +139,25 @@ export interface Office {
   rooms: OfficeRoom[];
   hq: Worker[];
   interactiveSessions: number;
+  openQuestions?: number;
+}
+
+export interface Question {
+  id: string;
+  from: Role;
+  project: string;
+  task: string | null;
+  runId: string | null;
+  sessionId: string | null;
+  question: string;
+  context: string;
+  options: string[];
+  status: "open" | "answered" | "dismissed";
+  answer: string | null;
+  askedAt: string;
+  answeredAt: string | null;
+  resumedRun: string | null;
+  source: "agent" | "auto";
 }
 
 export interface SessionInfo {
@@ -231,6 +257,38 @@ export interface StartRunBody {
   permissionMode: PermissionMode;
   budgetUsd: number;
   model?: string;
+  /** launch during an active sholat window (otherwise the server answers 423) */
+  override?: boolean;
+}
+
+// ---- prayer (sholat) ----
+
+export type PrayerName = "subuh" | "dzuhur" | "ashar" | "maghrib" | "isya";
+export interface PrayerTime {
+  name: PrayerName;
+  at: string;
+  hhmm: string;
+}
+export interface PrayerStatus {
+  config: {
+    city: string;
+    lat: number;
+    lon: number;
+    timezone: string;
+    fajrAngle: number;
+    ishaAngle: number;
+    asrFactor: number;
+    elevationM: number;
+    ihtiyatMin: number;
+    windowMin: number;
+    holdLaunches: boolean;
+    enabled: boolean;
+  };
+  date: string;
+  sunrise: string;
+  times: PrayerTime[];
+  next: PrayerTime | null;
+  active: { name: string; startedAt: string; endsAt: string } | null;
 }
 
 // ---- SSE ----
@@ -242,6 +300,8 @@ export interface SseEventMap {
   workspace: { changed: ("projects" | "tasks" | "active")[] };
   office: Office;
   usage: { today: UsageRow };
+  prayer: PrayerStatus;
+  questions: Question[];
 }
 
 export type SseEventName = keyof SseEventMap;

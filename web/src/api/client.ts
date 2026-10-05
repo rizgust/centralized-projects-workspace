@@ -2,6 +2,8 @@ import type {
   CreateTaskBody,
   Office,
   Overview,
+  PrayerStatus,
+  Question,
   PatchTaskBody,
   ProjectDetail,
   ProjectSummary,
@@ -117,6 +119,11 @@ export const api = {
   usage: (days: number) => request<Usage>("GET", `/api/usage?days=${days}`),
   system: () => request<SystemSnapshot>("GET", "/api/system"),
   systemHistory: () => request<SystemHistory>("GET", "/api/system/history"),
+  prayer: () => request<PrayerStatus>("GET", "/api/prayer"),
+  questions: () => request<Question[]>("GET", "/api/questions"),
+  answerQuestion: (id: string, b: { answer: string; resume?: boolean; override?: boolean }) =>
+    request<{ question: Question; run: Run | null }>("POST", `/api/questions/${enc(id)}/answer`, b),
+  dismissQuestion: (id: string) => request<Question>("POST", `/api/questions/${enc(id)}/dismiss`),
 };
 
 // ---------------------------------------------------------------- SSE
@@ -124,7 +131,7 @@ export const api = {
 export type ConnStatus = "connecting" | "open" | "reconnecting";
 export type SseHandler = <K extends SseEventName>(name: K, data: SseEventMap[K]) => void;
 
-const SSE_EVENTS: SseEventName[] = ["system", "runs", "run-event", "workspace", "office", "usage"];
+const SSE_EVENTS: SseEventName[] = ["system", "runs", "run-event", "workspace", "office", "usage", "prayer", "questions"];
 
 /**
  * Opens `/api/events` and reconnects with exponential backoff (1 s → 30 s).
