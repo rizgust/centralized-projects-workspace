@@ -187,7 +187,7 @@ export function TasksPage() {
                       </span>
                       <span className="kcard-title">{t.title}</span>
                       <span className="kcard-meta">
-                        <PixelAvatar role={t.owner} scale={1.5} />
+                        <PixelAvatar role={t.owner} scale={1.5} project={project} />
                         <span className="small">{roleLabel(t.owner)}</span>
                         <span className={`lvl lvl-${t.priority}`} title="priority">
                           P:{t.priority}
@@ -304,7 +304,7 @@ function TaskDrawer({
           <div className="row-wrap">
             <TaskStatusBadge status={task.status} />
             <span className="badge">
-              <PixelAvatar role={task.owner} scale={1} /> {roleLabel(task.owner)}
+              <PixelAvatar role={task.owner} scale={1} project={project} /> {roleLabel(task.owner)}
             </span>
             {task.weight !== null && <span className="badge">weight {task.weight}</span>}
             <span className={`badge lvl-${task.priority}`}>priority {task.priority}</span>

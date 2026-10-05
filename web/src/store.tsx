@@ -2,7 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { api, openEvents, type ConnStatus } from "./api/client";
 import type {
   Office,
+  PrayerStatus,
   ProjectSummary,
+  Question,
   Role,
   RoleInfo,
   Run,
@@ -40,6 +42,11 @@ interface Live {
   sysPoints: SystemPoint[];
   usageToday: UsageRow | null;
   roles: RoleInfo[];
+  prayer: PrayerStatus | null;
+  questions: Question[];
+  inbox: string | null | false;
+  openInbox: (questionId?: string) => void;
+  closeInbox: () => void;
   /** Bumped when the server reports workspace file changes; pages refetch on change. */
   tasksVersion: number;
   projectsVersion: number;
@@ -78,6 +85,11 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const [sysPoints, setSysPoints] = useState<SystemPoint[]>([]);
   const [usageToday, setUsageToday] = useState<UsageRow | null>(null);
   const [roles, setRoles] = useState<RoleInfo[]>([]);
+  const [prayer, setPrayerState] = useState<PrayerStatus | null>(null);
+  const prevActive = useRef<string | null | undefined>(undefined);
+  const [questions, setQuestionsState] = useState<Question[]>([]);
+  const [inbox, setInbox] = useState<string | null | false>(false);
+  const seenQ = useRef<Set<string> | null>(null);
   const [tasksVersion, setTasksVersion] = useState(0);
   const [projectsVersion, setProjectsVersion] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -131,6 +143,32 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     [toast],
   );
 
+  const setPrayer = useCallback(
+    (p: PrayerStatus) => {
+      const key = p.active ? p.active.name + p.active.startedAt : null;
+      if (prevActive.current !== undefined && key && key !== prevActive.current) {
+        const n = p.active!.name;
+        toast(`Waktu sholat ${n.charAt(0).toUpperCase() + n.slice(1)} — agents berwudhu`, "info");
+      }
+      prevActive.current = key;
+      setPrayerState(p);
+    },
+    [toast],
+  );
+
+  const setQuestions = useCallback(
+    (qs: Question[]) => {
+      const open = qs.filter((q) => q.status === "open");
+      if (seenQ.current) {
+        for (const q of open)
+          if (!seenQ.current.has(q.id)) toast(`${ROLE_FULL[q.from] ?? roleLabel(q.from)} needs your answer`, "info");
+      }
+      seenQ.current = new Set(qs.map((q) => q.id));
+      setQuestionsState(qs);
+    },
+    [toast],
+  );
+
   // Initial load.
   useEffect(() => {
     let cancelled = false;
@@ -148,6 +186,8 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         trackRuns(rs, false);
         setSysPoints(hist.points.slice(-MAX_POINTS));
         setError(null);
+        api.prayer().then(setPrayer).catch(() => {});
+        api.questions().then(setQuestions).catch(() => {});
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       }
@@ -155,7 +195,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [trackRuns]);
+  }, [trackRuns, setPrayer, setQuestions]);
 
   // SSE.
   useEffect(() => {
@@ -185,6 +225,12 @@ export function LiveProvider({ children }: { children: ReactNode }) {
           }
           break;
         }
+        case "prayer":
+          setPrayer(data as PrayerStatus);
+          break;
+        case "questions":
+          setQuestions(data as Question[]);
+          break;
         case "run-event":
           break;
       }
@@ -197,7 +243,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         void api.office().then(setOffice).catch(() => {});
       }
     });
-  }, [trackRuns, refreshProjects]);
+  }, [trackRuns, refreshProjects, setPrayer, setQuestions]);
 
   const activate = useCallback(
     async (id: string | null) => {
@@ -226,6 +272,11 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       sysPoints,
       usageToday,
       roles,
+      prayer,
+      questions,
+      inbox,
+      openInbox: (id?: string) => setInbox(id ?? null),
+      closeInbox: () => setInbox(false),
       tasksVersion,
       projectsVersion,
       toasts,
@@ -241,7 +292,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       setRegisterOpen,
       error,
     }),
-    [conn, workspace, projects, activeProject, office, runs, system, sysPoints, usageToday, roles, tasksVersion, projectsVersion, toasts, toast, dismissToast, refreshProjects, activate, on, launch, registerOpen, error],
+    [conn, workspace, projects, activeProject, office, runs, system, sysPoints, usageToday, roles, prayer, questions, inbox, tasksVersion, projectsVersion, toasts, toast, dismissToast, refreshProjects, activate, on, launch, registerOpen, error],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -293,6 +344,15 @@ export const ROLE_LABEL: Record<Role, string> = {
   frontend: "Frontend",
   backend: "Backend",
   infra: "Infra",
+};
+
+export const ROLE_FULL: Record<string, string> = {
+  analyst: "Analyst",
+  "project-manager": "Project Manager",
+  uiux: "UI/UX Designer",
+  frontend: "Frontend Engineer",
+  backend: "Backend Engineer",
+  infra: "Infrastructure Engineer",
 };
 
 export function roleLabel(r: string): string {

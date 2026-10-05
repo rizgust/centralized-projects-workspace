@@ -4,7 +4,7 @@ import { api } from "../api/client";
 import type { Role, Task, TaskStatus, Worker } from "../api/types";
 import { TASK_STATUSES } from "../api/types";
 import { OfficeCanvas, stationKey, type StationRef } from "../office/OfficeCanvas";
-import { roomsOf } from "../office/scene";
+import { roomsOf } from "../office/world";
 import { roleLabel, useLive, useRunEvents } from "../store";
 import { PixelAvatar } from "../components/PixelAvatar";
 import { Dialog, RunStatusBadge, TaskStatusBadge } from "../components/ui";
@@ -13,28 +13,42 @@ import { STATUS_LABEL, compact, duration, usd, totalTokens } from "../fmt";
 
 const STATE_LABEL: Record<Worker["state"], string> = {
   working: "Working",
+  asking: "Asking you",
   blocked: "Blocked",
   review: "Reviewing",
   waiting: "Waiting",
   idle: "Idle",
 };
-const STATE_SYM: Record<Worker["state"], string> = { working: "⌨", blocked: "!", review: "?", waiting: "≡", idle: "z" };
+const STATE_SYM: Record<Worker["state"], string> = { working: "⌨", asking: "?", blocked: "!", review: "?", waiting: "≡", idle: "z" };
 
 export function OfficePage() {
   const live = useLive();
-  const { office, projects, system, usageToday } = live;
+  const { office, system, usageToday, runs } = live;
   const [sel, setSel] = useState<StationRef | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
 
-  const types = useMemo(() => Object.fromEntries(projects.map((p) => [p.id, p.type])), [projects]);
+  // runs that ended in the last 10 s show a done / sweat icon over their worker
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 2000);
+    return () => window.clearInterval(t);
+  }, []);
+  const recent = useMemo(() => {
+    const m = new Map<string, "done" | "sweat">();
+    for (const r of runs)
+      if (r.endedAt && now - Date.parse(r.endedAt) < 10_000 && r.status !== "running") m.set(stationKey(r.project, r.role), r.status === "succeeded" ? "done" : "sweat");
+    return m;
+  }, [runs, now]);
   const extras = useMemo(
     () => ({
       cpu: system?.cpu.percent ?? null,
       todayTokens: usageToday ? usageToday.input + usageToday.output + usageToday.cacheRead + usageToday.cacheWrite : null,
       todayCost: usageToday?.costUsd ?? null,
       interactive: office?.interactiveSessions ?? 0,
+      recent,
+      openQuestions: live.questions.filter((q) => q.status === "open").length,
     }),
-    [system, usageToday, office?.interactiveSessions],
+    [system, usageToday, office?.interactiveSessions, recent, live.questions],
   );
 
   if (!office) return <p className="muted">Loading the office…</p>;
@@ -62,11 +76,12 @@ export function OfficePage() {
 
       <OfficeCanvas
         office={office}
-        types={types}
         extras={extras}
         focusKey={focusKey ?? (sel ? stationKey(sel.project, sel.worker.role) : null)}
         onSelect={setSel}
         onRegister={() => live.setRegisterOpen(true)}
+        prayer={live.prayer}
+        onInbox={(id) => live.openInbox(id)}
       />
 
       {hq && (
@@ -77,6 +92,8 @@ export function OfficePage() {
         </p>
       )}
 
+      <details className="roster-panel">
+        <summary>Team status by room</summary>
       <section className="roster" aria-label="Workers by room">
         {rooms.map((r) => (
           <div key={r.project || "hq"} className={`roster-room${r.active && !hq ? " active" : ""}`}>
@@ -99,7 +116,7 @@ export function OfficePage() {
                       onMouseLeave={() => setFocusKey(null)}
                       aria-label={`${roleLabel(w.role)} in ${r.name}: ${STATE_LABEL[w.state]}${w.taskId ? `, ${w.taskId}` : ""}`}
                     >
-                      <PixelAvatar role={w.role} scale={2} />
+                      <PixelAvatar role={w.role} scale={2} project={project} />
                       <span className="chip-text">
                         <span className="chip-role">{roleLabel(w.role)}</span>
                         <span className={`state-pill state-${w.state}`}>
@@ -115,6 +132,8 @@ export function OfficePage() {
           </div>
         ))}
       </section>
+
+      </details>
 
       <WorkerDrawer sel={sel} onClose={() => setSel(null)} />
     </div>
@@ -174,7 +193,7 @@ function WorkerDrawer({ sel, onClose }: { sel: StationRef | null; onClose: () =>
       title={
         worker && (
           <span className="drawer-title">
-            <PixelAvatar role={worker.role} scale={3} />
+            <PixelAvatar role={worker.role} scale={3} project={project} />
             <span>
               {info?.name ?? roleLabel(worker.role)}
               <span className="muted small block">{project ? live.projects.find((p) => p.id === project)?.name ?? project : "HQ"}</span>

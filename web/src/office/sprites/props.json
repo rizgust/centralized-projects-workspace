@@ -1,0 +1,796 @@
+{
+ "scale": {
+  "office": 0.39
+ },
+ "props": {
+  "mushola_room": {
+   "x": 0,
+   "y": 0,
+   "w": 140,
+   "h": 120,
+   "kind": "prefab"
+  },
+  "prayer_room_small": {
+   "x": 142,
+   "y": 0,
+   "w": 87,
+   "h": 101,
+   "kind": "prefab"
+  },
+  "wudhu_room": {
+   "x": 231,
+   "y": 0,
+   "w": 100,
+   "h": 84,
+   "kind": "prefab"
+  },
+  "room_office": {
+   "x": 333,
+   "y": 0,
+   "w": 103,
+   "h": 83,
+   "kind": "prefab"
+  },
+  "room_cubicles": {
+   "x": 438,
+   "y": 0,
+   "w": 179,
+   "h": 83,
+   "kind": "prefab"
+  },
+  "room_meeting": {
+   "x": 619,
+   "y": 0,
+   "w": 113,
+   "h": 83,
+   "kind": "prefab"
+  },
+  "room_lounge": {
+   "x": 734,
+   "y": 0,
+   "w": 129,
+   "h": 83,
+   "kind": "prefab"
+  },
+  "desk_exec": {
+   "x": 865,
+   "y": 0,
+   "w": 84,
+   "h": 70,
+   "kind": "furniture"
+  },
+  "cubicle_pair": {
+   "x": 0,
+   "y": 122,
+   "w": 110,
+   "h": 62,
+   "kind": "furniture"
+  },
+  "conference_table": {
+   "x": 112,
+   "y": 122,
+   "w": 122,
+   "h": 62,
+   "kind": "furniture"
+  },
+  "meeting_round": {
+   "x": 236,
+   "y": 122,
+   "w": 68,
+   "h": 61,
+   "kind": "furniture"
+  },
+  "reception_desk": {
+   "x": 306,
+   "y": 122,
+   "w": 109,
+   "h": 60,
+   "kind": "furniture"
+  },
+  "desk_corner": {
+   "x": 417,
+   "y": 122,
+   "w": 64,
+   "h": 59,
+   "kind": "furniture"
+  },
+  "meeting_table6": {
+   "x": 483,
+   "y": 122,
+   "w": 94,
+   "h": 58,
+   "kind": "furniture"
+  },
+  "presentation_screen": {
+   "x": 579,
+   "y": 122,
+   "w": 74,
+   "h": 58,
+   "kind": "decor"
+  },
+  "sofa_set": {
+   "x": 655,
+   "y": 122,
+   "w": 97,
+   "h": 55,
+   "kind": "furniture"
+  },
+  "cabinet_towels": {
+   "x": 754,
+   "y": 122,
+   "w": 78,
+   "h": 54,
+   "kind": "mushola"
+  },
+  "desk_single": {
+   "x": 834,
+   "y": 122,
+   "w": 65,
+   "h": 53,
+   "kind": "furniture"
+  },
+  "desk_laptop": {
+   "x": 901,
+   "y": 122,
+   "w": 50,
+   "h": 53,
+   "kind": "furniture"
+  },
+  "sajadah_runner": {
+   "x": 953,
+   "y": 122,
+   "w": 22,
+   "h": 53,
+   "kind": "mushola"
+  },
+  "armchair_set": {
+   "x": 0,
+   "y": 186,
+   "w": 61,
+   "h": 49,
+   "kind": "furniture"
+  },
+  "display_stand": {
+   "x": 63,
+   "y": 186,
+   "w": 56,
+   "h": 47,
+   "kind": "decor"
+  },
+  "vending_snack": {
+   "x": 121,
+   "y": 186,
+   "w": 31,
+   "h": 47,
+   "kind": "furniture"
+  },
+  "vending_drink": {
+   "x": 154,
+   "y": 186,
+   "w": 32,
+   "h": 47,
+   "kind": "furniture"
+  },
+  "whiteboard_stand": {
+   "x": 188,
+   "y": 186,
+   "w": 67,
+   "h": 46,
+   "kind": "decor"
+  },
+  "water_cooler": {
+   "x": 257,
+   "y": 186,
+   "w": 20,
+   "h": 45,
+   "kind": "furniture"
+  },
+  "water_dispenser": {
+   "x": 279,
+   "y": 186,
+   "w": 19,
+   "h": 45,
+   "kind": "mushola"
+  },
+  "cabinet_plant": {
+   "x": 300,
+   "y": 186,
+   "w": 31,
+   "h": 42,
+   "kind": "furniture"
+  },
+  "locker": {
+   "x": 333,
+   "y": 186,
+   "w": 31,
+   "h": 40,
+   "kind": "furniture"
+  },
+  "divider_screen": {
+   "x": 366,
+   "y": 186,
+   "w": 86,
+   "h": 40,
+   "kind": "mushola"
+  },
+  "bookshelf": {
+   "x": 454,
+   "y": 186,
+   "w": 48,
+   "h": 39,
+   "kind": "furniture"
+  },
+  "server_rack": {
+   "x": 504,
+   "y": 186,
+   "w": 42,
+   "h": 39,
+   "kind": "furniture"
+  },
+  "side_cabinet": {
+   "x": 548,
+   "y": 186,
+   "w": 24,
+   "h": 38,
+   "kind": "furniture"
+  },
+  "coffee_counter": {
+   "x": 574,
+   "y": 186,
+   "w": 50,
+   "h": 38,
+   "kind": "furniture"
+  },
+  "plant_pink_big": {
+   "x": 626,
+   "y": 186,
+   "w": 27,
+   "h": 37,
+   "kind": "plant"
+  },
+  "sajadah_large": {
+   "x": 655,
+   "y": 186,
+   "w": 48,
+   "h": 37,
+   "kind": "mushola"
+  },
+  "copier": {
+   "x": 705,
+   "y": 186,
+   "w": 31,
+   "h": 36,
+   "kind": "furniture"
+  },
+  "wudhu_basin": {
+   "x": 738,
+   "y": 186,
+   "w": 19,
+   "h": 36,
+   "kind": "wudhu"
+  },
+  "planter_long": {
+   "x": 759,
+   "y": 186,
+   "w": 64,
+   "h": 35,
+   "kind": "plant"
+  },
+  "file_cabinet": {
+   "x": 825,
+   "y": 186,
+   "w": 25,
+   "h": 34,
+   "kind": "furniture"
+  },
+  "wudhu_basin_row": {
+   "x": 852,
+   "y": 186,
+   "w": 68,
+   "h": 34,
+   "kind": "wudhu"
+  },
+  "bookshelf_mushola": {
+   "x": 922,
+   "y": 186,
+   "w": 39,
+   "h": 33,
+   "kind": "mushola"
+  },
+  "sajadah_arch_a": {
+   "x": 963,
+   "y": 186,
+   "w": 21,
+   "h": 33,
+   "kind": "mushola"
+  },
+  "sajadah_arch_b": {
+   "x": 986,
+   "y": 186,
+   "w": 21,
+   "h": 33,
+   "kind": "mushola"
+  },
+  "sajadah_arch_c": {
+   "x": 0,
+   "y": 237,
+   "w": 22,
+   "h": 33,
+   "kind": "mushola"
+  },
+  "coat_rack": {
+   "x": 24,
+   "y": 237,
+   "w": 23,
+   "h": 32,
+   "kind": "furniture"
+  },
+  "mihrab_niche": {
+   "x": 49,
+   "y": 237,
+   "w": 30,
+   "h": 32,
+   "kind": "mushola"
+  },
+  "shoe_rack": {
+   "x": 81,
+   "y": 237,
+   "w": 39,
+   "h": 32,
+   "kind": "mushola"
+  },
+  "wudhu_wall_taps": {
+   "x": 122,
+   "y": 237,
+   "w": 27,
+   "h": 32,
+   "kind": "wudhu"
+  },
+  "low_cabinet": {
+   "x": 151,
+   "y": 237,
+   "w": 32,
+   "h": 29,
+   "kind": "furniture"
+  },
+  "plant_mushola_big": {
+   "x": 185,
+   "y": 237,
+   "w": 25,
+   "h": 29,
+   "kind": "plant"
+  },
+  "plant_tall": {
+   "x": 212,
+   "y": 237,
+   "w": 23,
+   "h": 28,
+   "kind": "plant"
+  },
+  "plant_pink_tall": {
+   "x": 237,
+   "y": 237,
+   "w": 21,
+   "h": 28,
+   "kind": "plant"
+  },
+  "printer_small": {
+   "x": 260,
+   "y": 237,
+   "w": 23,
+   "h": 28,
+   "kind": "furniture"
+  },
+  "sajadah_mihrab": {
+   "x": 285,
+   "y": 237,
+   "w": 24,
+   "h": 28,
+   "kind": "mushola"
+  },
+  "plant_b": {
+   "x": 311,
+   "y": 237,
+   "w": 21,
+   "h": 27,
+   "kind": "plant"
+  },
+  "wall_fan": {
+   "x": 334,
+   "y": 237,
+   "w": 23,
+   "h": 27,
+   "kind": "mushola"
+  },
+  "sajadah_wide": {
+   "x": 359,
+   "y": 237,
+   "w": 45,
+   "h": 27,
+   "kind": "mushola"
+  },
+  "wet_floor_sign": {
+   "x": 406,
+   "y": 237,
+   "w": 23,
+   "h": 26,
+   "kind": "wudhu"
+  },
+  "prayer_clock": {
+   "x": 497,
+   "y": 237,
+   "w": 43,
+   "h": 25,
+   "kind": "mushola"
+  },
+  "plant_a": {
+   "x": 542,
+   "y": 237,
+   "w": 18,
+   "h": 24,
+   "kind": "plant"
+  },
+  "quran_cream": {
+   "x": 562,
+   "y": 237,
+   "w": 20,
+   "h": 24,
+   "kind": "mushola"
+  },
+  "sajadah_stack_blue": {
+   "x": 584,
+   "y": 237,
+   "w": 23,
+   "h": 24,
+   "kind": "mushola"
+  },
+  "sajadah_stack_pink": {
+   "x": 609,
+   "y": 237,
+   "w": 25,
+   "h": 24,
+   "kind": "mushola"
+  },
+  "plant_mushola_b": {
+   "x": 636,
+   "y": 237,
+   "w": 17,
+   "h": 24,
+   "kind": "plant"
+  },
+  "cabinet_small": {
+   "x": 655,
+   "y": 237,
+   "w": 27,
+   "h": 23,
+   "kind": "furniture"
+  },
+  "planter_box": {
+   "x": 684,
+   "y": 237,
+   "w": 25,
+   "h": 23,
+   "kind": "plant"
+  },
+  "plant_c": {
+   "x": 711,
+   "y": 237,
+   "w": 19,
+   "h": 23,
+   "kind": "plant"
+  },
+  "cork_board": {
+   "x": 732,
+   "y": 237,
+   "w": 32,
+   "h": 23,
+   "kind": "decor"
+  },
+  "frame_kaaba": {
+   "x": 766,
+   "y": 237,
+   "w": 22,
+   "h": 23,
+   "kind": "mushola"
+  },
+  "quran_stand": {
+   "x": 790,
+   "y": 237,
+   "w": 21,
+   "h": 23,
+   "kind": "mushola"
+  },
+  "quran_green": {
+   "x": 813,
+   "y": 237,
+   "w": 21,
+   "h": 23,
+   "kind": "mushola"
+  },
+  "quran_small": {
+   "x": 836,
+   "y": 237,
+   "w": 18,
+   "h": 23,
+   "kind": "mushola"
+  },
+  "sajadah_row": {
+   "x": 856,
+   "y": 237,
+   "w": 39,
+   "h": 23,
+   "kind": "mushola"
+  },
+  "shredder": {
+   "x": 897,
+   "y": 237,
+   "w": 18,
+   "h": 22,
+   "kind": "furniture"
+  },
+  "frame_landscape": {
+   "x": 917,
+   "y": 237,
+   "w": 25,
+   "h": 22,
+   "kind": "decor"
+  },
+  "frame_chart": {
+   "x": 944,
+   "y": 237,
+   "w": 31,
+   "h": 22,
+   "kind": "decor"
+  },
+  "frame_calligraphy": {
+   "x": 977,
+   "y": 237,
+   "w": 20,
+   "h": 22,
+   "kind": "mushola"
+  },
+  "frame_green": {
+   "x": 999,
+   "y": 237,
+   "w": 15,
+   "h": 22,
+   "kind": "mushola"
+  },
+  "sajadah_stack_green": {
+   "x": 0,
+   "y": 272,
+   "w": 24,
+   "h": 22,
+   "kind": "mushola"
+  },
+  "donation_box": {
+   "x": 26,
+   "y": 272,
+   "w": 19,
+   "h": 22,
+   "kind": "mushola"
+  },
+  "bin_grey": {
+   "x": 47,
+   "y": 272,
+   "w": 14,
+   "h": 22,
+   "kind": "wudhu"
+  },
+  "notice_board": {
+   "x": 63,
+   "y": 272,
+   "w": 35,
+   "h": 21,
+   "kind": "decor"
+  },
+  "air_vent": {
+   "x": 100,
+   "y": 272,
+   "w": 24,
+   "h": 21,
+   "kind": "decor"
+  },
+  "trash_basket": {
+   "x": 214,
+   "y": 272,
+   "w": 15,
+   "h": 21,
+   "kind": "wudhu"
+  },
+  "plant_d": {
+   "x": 231,
+   "y": 272,
+   "w": 17,
+   "h": 20,
+   "kind": "plant"
+  },
+  "boxes": {
+   "x": 250,
+   "y": 272,
+   "w": 33,
+   "h": 20,
+   "kind": "furniture"
+  },
+  "mirror_small": {
+   "x": 324,
+   "y": 272,
+   "w": 14,
+   "h": 20,
+   "kind": "wudhu"
+  },
+  "mirror_large": {
+   "x": 340,
+   "y": 272,
+   "w": 24,
+   "h": 19,
+   "kind": "wudhu"
+  },
+  "towel_rack": {
+   "x": 366,
+   "y": 272,
+   "w": 28,
+   "h": 19,
+   "kind": "wudhu"
+  },
+  "clock": {
+   "x": 396,
+   "y": 272,
+   "w": 19,
+   "h": 18,
+   "kind": "decor"
+  },
+  "aircon": {
+   "x": 417,
+   "y": 272,
+   "w": 33,
+   "h": 18,
+   "kind": "mushola"
+  },
+  "plant_mushola": {
+   "x": 452,
+   "y": 272,
+   "w": 15,
+   "h": 18,
+   "kind": "plant"
+  },
+  "frame_small": {
+   "x": 469,
+   "y": 272,
+   "w": 9,
+   "h": 16,
+   "kind": "mushola"
+  },
+  "tissue_box": {
+   "x": 480,
+   "y": 272,
+   "w": 16,
+   "h": 16,
+   "kind": "mushola"
+  },
+  "plant_shelf": {
+   "x": 498,
+   "y": 272,
+   "w": 16,
+   "h": 16,
+   "kind": "plant"
+  },
+  "sandals_brown": {
+   "x": 577,
+   "y": 272,
+   "w": 14,
+   "h": 13,
+   "kind": "mushola"
+  },
+  "sandals_tan": {
+   "x": 593,
+   "y": 272,
+   "w": 16,
+   "h": 12,
+   "kind": "mushola"
+  },
+  "sandals_black": {
+   "x": 706,
+   "y": 272,
+   "w": 12,
+   "h": 11,
+   "kind": "mushola"
+  },
+  "sandals_blue": {
+   "x": 720,
+   "y": 272,
+   "w": 16,
+   "h": 11,
+   "kind": "mushola"
+  },
+  "sandals_pink": {
+   "x": 738,
+   "y": 272,
+   "w": 14,
+   "h": 11,
+   "kind": "mushola"
+  }
+ },
+ "floors": {
+  "meeting_carpet": {
+   "x": 516,
+   "y": 272,
+   "w": 30,
+   "h": 15
+  },
+  "restroom": {
+   "x": 548,
+   "y": 272,
+   "w": 27,
+   "h": 13
+  },
+  "office": {
+   "x": 611,
+   "y": 272,
+   "w": 22,
+   "h": 11
+  },
+  "blue_carpet": {
+   "x": 635,
+   "y": 272,
+   "w": 21,
+   "h": 11
+  },
+  "hallway": {
+   "x": 658,
+   "y": 272,
+   "w": 22,
+   "h": 11
+  },
+  "reception": {
+   "x": 682,
+   "y": 272,
+   "w": 22,
+   "h": 11
+  },
+  "wood": {
+   "x": 754,
+   "y": 272,
+   "w": 20,
+   "h": 10
+  }
+ },
+ "rugs": {
+  "rug_red": {
+   "x": 431,
+   "y": 237,
+   "w": 29,
+   "h": 25
+  },
+  "rug_gold": {
+   "x": 462,
+   "y": 237,
+   "w": 33,
+   "h": 25
+  },
+  "rug_round": {
+   "x": 126,
+   "y": 272,
+   "w": 22,
+   "h": 21
+  },
+  "rug_green": {
+   "x": 150,
+   "y": 272,
+   "w": 29,
+   "h": 21
+  },
+  "rug_pink": {
+   "x": 181,
+   "y": 272,
+   "w": 31,
+   "h": 21
+  },
+  "rug_blue": {
+   "x": 285,
+   "y": 272,
+   "w": 37,
+   "h": 20
+  }
+ }
+}

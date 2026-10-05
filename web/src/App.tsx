@@ -5,6 +5,7 @@ import { useLive } from "./store";
 import { Toasts } from "./components/ui";
 import { LaunchDialog } from "./components/LaunchDialog";
 import { RegisterDialog } from "./components/RegisterDialog";
+import { InboxDrawer } from "./components/InboxDrawer";
 import { OfficePage } from "./pages/OfficePage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { ProjectDetailPage } from "./pages/ProjectDetailPage";
@@ -48,6 +49,7 @@ export function App() {
   const live = useLive();
   const [theme, toggleTheme] = useTheme();
   const running = live.runs.filter((r) => r.status === "running").length;
+  const openQ = live.questions.filter((q) => q.status === "open").length;
 
   return (
     <div className="shell">
@@ -96,6 +98,11 @@ export function App() {
             </select>
           </label>
           <div className="top-right">
+            {openQ > 0 && (
+              <button className="inbox-pill" onClick={() => live.openInbox()} aria-label={`Owner inbox, ${openQ} open questions`}>
+                <span aria-hidden="true">?</span> Inbox ({openQ})
+              </button>
+            )}
             <button className="btn btn-primary btn-sm" onClick={() => live.openLaunch()}>
               + Launch agent
             </button>
@@ -126,6 +133,7 @@ export function App() {
       </div>
       <LaunchDialog />
       <RegisterDialog />
+      <InboxDrawer />
       <Toasts />
     </div>
   );

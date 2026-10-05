@@ -17,11 +17,11 @@ export function useNow(ms = 1000) {
   return now;
 }
 
-const STATE_SYM: Record<Worker["state"], string> = { working: "⌨", blocked: "!", review: "?", waiting: "≡", idle: "z" };
+const STATE_SYM: Record<Worker["state"], string> = { working: "⌨", asking: "?", blocked: "!", review: "?", waiting: "≡", idle: "z" };
 
 export function AgentsPage() {
   const [params, setParams] = useSearchParams();
-  const tab = (params.get("tab") as "runs" | "sessions") ?? "runs";
+  const tab = (params.get("tab") as "runs" | "sessions" | "questions") ?? "runs";
   const live = useLive();
 
   return (
@@ -43,9 +43,10 @@ export function AgentsPage() {
         items={[
           { id: "runs", label: "Runs" },
           { id: "sessions", label: "Sessions" },
+          { id: "questions", label: `Questions${live.questions.some((q) => q.status === "open") ? ` (${live.questions.filter((q) => q.status === "open").length})` : ""}` },
         ]}
       />
-      {tab === "runs" ? <RunsTable runs={live.runs} /> : <SessionsTable />}
+      {tab === "runs" ? <RunsTable runs={live.runs} /> : tab === "sessions" ? <SessionsTable /> : <QuestionsTable />}
     </div>
   );
 }
@@ -60,7 +61,7 @@ function RoleCards() {
     for (const r of rooms) for (const w of r.workers) m.set(w.role, [...(m.get(w.role) ?? []), { worker: w, room: r.name }]);
     return m;
   }, [live.office]);
-  const rank: Record<Worker["state"], number> = { working: 0, blocked: 1, review: 2, waiting: 3, idle: 4 };
+  const rank: Record<Worker["state"], number> = { working: 0, asking: 1, blocked: 2, review: 3, waiting: 4, idle: 5 };
 
   return (
     <div className="role-grid">
@@ -156,7 +157,7 @@ export function RunsTable({ runs }: { runs: Run[] }) {
                   {r.error && <div className="text-critical small truncate" title={r.error}>{r.error}</div>}
                 </td>
                 <td className="nowrap">
-                  <PixelAvatar role={r.role} scale={1} /> {roleLabel(r.role)}
+                  <PixelAvatar role={r.role} scale={1} project={r.project} /> {roleLabel(r.role)}
                 </td>
                 <td className="nowrap">{r.project}</td>
                 <td className="nowrap">{r.taskId ? <code>{r.taskId}</code> : <span className="muted">—</span>}</td>
@@ -194,6 +195,53 @@ export function RunsTable({ runs }: { runs: Run[] }) {
               </tr>
             );
           })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function QuestionsTable() {
+  const live = useLive();
+  if (!live.questions.length) return <Empty title="No questions from agents yet" />;
+  return (
+    <div className="table-wrap">
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>From</th>
+            <th>Project</th>
+            <th>Question</th>
+            <th>Answer</th>
+            <th>Asked</th>
+            <th>Resumed run</th>
+          </tr>
+        </thead>
+        <tbody>
+          {live.questions.map((q) => (
+            <tr key={q.id}>
+              <td>
+                <span className={`badge${q.status === "open" ? " badge-warn" : ""}`}>
+                  {q.status === "open" ? "? open" : q.status === "answered" ? "✓ answered" : "× dismissed"}
+                </span>
+              </td>
+              <td className="nowrap">
+                <PixelAvatar role={q.from} scale={1} project={q.project} /> {roleLabel(q.from)}
+              </td>
+              <td className="nowrap">
+                {q.project}
+                {q.task && <div className="muted small">{q.task}</div>}
+              </td>
+              <td>
+                {q.question}
+                {q.source === "auto" && <div className="muted small">detected from the agent's last message</div>}
+              </td>
+              <td>{q.answer ?? (q.status === "open" ? <button className="btn btn-sm btn-primary" onClick={() => live.openInbox(q.id)}>Answer</button> : <span className="muted">—</span>)}</td>
+              <td className="nowrap">{ago(q.askedAt)}</td>
+              <td>{q.resumedRun ? <Link to={`/agents/runs/${encodeURIComponent(q.resumedRun)}`}>{q.resumedRun}</Link> : <span className="muted">—</span>}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

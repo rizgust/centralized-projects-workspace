@@ -4,6 +4,9 @@ import { ApiError, type ConnStatus, type SseHandler } from "../api/client";
 import type {
   Office,
   OfficeRoom,
+  PrayerName,
+  PrayerStatus,
+  Question,
   Overview,
   ProjectDetail,
   ProjectSummary,
@@ -46,7 +49,7 @@ const START = now();
 // ------------------------------------------------------------------ state
 const db = {
   projects: PROJECTS.map((p) => ({ ...p })) as ProjectSeed[],
-  active: "do-mpet" as string | null,
+  active: "atlas-web" as string | null,
   tasks: seedTasks(),
   runs: seedRuns(START),
   events: new Map<string, RunEvent[]>(),
@@ -67,6 +70,102 @@ if (new URLSearchParams(window.location.search).get("empty") === "1") {
   db.tasks = [];
   db.runs = [];
   db.sessions = db.sessions.filter((s) => s.project === "workspace");
+}
+
+// ------------------------------------------------------------------ owner questions
+const questions: Question[] = [
+  {
+    id: "q-01",
+    from: "uiux",
+    project: "atlas-web",
+    task: "TASK-012",
+    runId: "run-5b21",
+    sessionId: "c0ffee02-5b21",
+    question: "Should the Pro upgrade flow open as a full page or a modal sheet?",
+    context: "TASK-012 Pro plan upgrade flow. A full page gives room for the plan comparison; a modal keeps users in their current workspace. Both mockups are in the Figma file.",
+    options: ["Full page", "Modal sheet", "Modal on mobile, page on desktop"],
+    status: "open",
+    answer: null,
+    askedAt: iso(START - 18 * 60_000),
+    answeredAt: null,
+    resumedRun: null,
+    source: "agent",
+  },
+  {
+    id: "q-02",
+    from: "backend",
+    project: "pixel-quest",
+    task: "TASK-006",
+    runId: "run-3c09",
+    sessionId: "c0ffee03-3c09",
+    question: "Is it OK to add a dependency for A* pathfinding, or should I hand-roll it?",
+    context: "The run ended on this question: \"I can pull in a small A* library (MIT, ~8 KB) or write a hex-grid A* myself. Which do you prefer?\"",
+    options: [],
+    status: "open",
+    answer: null,
+    askedAt: iso(START - 6 * 60_000),
+    answeredAt: null,
+    resumedRun: null,
+    source: "auto",
+  },
+];
+const emitQuestions = () => emit("questions", structuredClone(questions));
+
+// ------------------------------------------------------------------ prayer fixture
+// Times are relative to "now": the next adhan is ~4 minutes away. `?sholat=now` opens a
+// window immediately for demos.
+const WINDOW_MIN = 20;
+const hhmm = (ms: number) => {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+const prayerTimes = (() => {
+  const MIN = 60_000;
+  const base = START + 4 * MIN;
+  const offs: [PrayerName, number][] = [
+    ["subuh", -9 * 60],
+    ["dzuhur", -3 * 60],
+    ["ashar", 0],
+    ["maghrib", 2 * 60 + 40],
+    ["isya", 3 * 60 + 55],
+  ];
+  return offs.map(([name, m]) => ({ name, at: iso(base + m * MIN), hhmm: hhmm(base + m * MIN) }));
+})();
+const prayerState = {
+  active: null as PrayerStatus["active"],
+};
+{
+  const q = new URLSearchParams(window.location.search);
+  // ?sholat=now opens a window immediately; &sholatAgo=SECONDS starts it that long ago
+  if (q.get("sholat") === "now") {
+    const ago = Number(q.get("sholatAgo") ?? 0) * 1000;
+    prayerState.active = { name: "ashar", startedAt: iso(START - ago), endsAt: iso(START - ago + WINDOW_MIN * 60_000) };
+  }
+}
+function prayer(): PrayerStatus {
+  const t = now();
+  const next = prayerTimes.find((p) => Date.parse(p.at) > t) ?? null;
+  return {
+    config: {
+      city: "Malang",
+      lat: -7.9666,
+      lon: 112.6326,
+      timezone: "Asia/Jakarta",
+      fajrAngle: 20,
+      ishaAngle: 18,
+      asrFactor: 1,
+      elevationM: 440,
+      ihtiyatMin: 2,
+      windowMin: WINDOW_MIN,
+      holdLaunches: true,
+      enabled: true,
+    },
+    date: new Date().toISOString().slice(0, 10),
+    sunrise: hhmm(Date.parse(prayerTimes[0].at) + 78 * 60_000),
+    times: prayerTimes,
+    next,
+    active: prayerState.active,
+  };
 }
 
 // Pre-fill events for every seeded run.
@@ -148,6 +247,8 @@ function workerFor(project: string | null, role: Role): Worker {
     const task = run.taskId ? db.tasks.find((t) => t.project === project && t.id === run.taskId) : undefined;
     return { ...base, state: "working", runId: run.id, taskId: run.taskId, taskTitle: task?.title ?? null, bubble: run.lastText.slice(0, 12) };
   }
+  const q = questions.find((x) => x.status === "open" && x.project === project && x.from === role);
+  if (q) return { ...base, state: "asking", questionId: q.id, question: q.question, taskId: q.task, taskTitle: db.tasks.find((t) => t.project === project && t.id === q.task)?.title ?? null, bubble: "?" };
   if (ov && ov.until > now()) {
     const t = pick("active") ?? pick("ready") ?? tasks[0];
     return { ...base, state: ov.state, bubble: ov.bubble, taskId: t?.id ?? null, taskTitle: t?.title ?? null };
@@ -168,7 +269,7 @@ function office(): Office {
     active: db.active === p.id,
     workers: ROLES.map((r) => workerFor(p.id, r)),
   }));
-  return { project: db.active, rooms, hq: ROLES.map((r) => workerFor(null, r)), interactiveSessions: db.interactive };
+  return { project: db.active, rooms, hq: ROLES.map((r) => workerFor(null, r)), interactiveSessions: db.interactive, openQuestions: questions.filter((q) => q.status === "open").length };
 }
 
 function addRow(a: UsageRow, b: UsageRow): UsageRow {
@@ -354,6 +455,22 @@ function startSimulation() {
     emitOffice();
   }, 3500);
 
+  // Prayer windows open at the adhan and close windowMin later.
+  setInterval(() => {
+    const t = now();
+    const a = prayerState.active;
+    if (a && Date.parse(a.endsAt) <= t) {
+      prayerState.active = null;
+      emit("prayer", prayer());
+    } else if (!a) {
+      const due = prayerTimes.find((p) => Date.parse(p.at) <= t && t - Date.parse(p.at) < WINDOW_MIN * 60_000 && t - Date.parse(p.at) < 6000);
+      if (due) {
+        prayerState.active = { name: due.name, startedAt: due.at, endsAt: iso(Date.parse(due.at) + WINDOW_MIN * 60_000) };
+        emit("prayer", prayer());
+      }
+    }
+  }, 2000);
+
   // Usage rescan every 30 s (faster in mock: 10 s).
   setInterval(() => {
     const add = { input: 3000, output: 1200, cacheWrite: 9000, cacheRead: 160_000 };
@@ -369,6 +486,8 @@ export function mockEvents(onEvent: SseHandler, onStatus: (s: ConnStatus) => voi
     listeners.add(onEvent);
     onStatus("open");
     emitOffice();
+    onEvent("prayer", prayer());
+    onEvent("questions", structuredClone(questions));
   }, 250);
   return () => {
     clearTimeout(t);
@@ -403,6 +522,49 @@ function route(method: string, p: string[], q: URLSearchParams, body: unknown): 
   if (method === "GET" && a === "usage") return usage(Number(q.get("days") ?? 30));
   if (method === "GET" && a === "system" && b === "history") return { points: db.history };
   if (method === "GET" && a === "system") return system();
+  if (method === "GET" && a === "prayer") return prayer();
+  if (a === "questions") {
+    if (method === "GET" && !b) return [...questions].sort((x, y) => (x.status === "open" ? 0 : 1) - (y.status === "open" ? 0 : 1) || y.askedAt.localeCompare(x.askedAt));
+    const q = questions.find((x) => x.id === b);
+    if (!q) throw new ApiError(`question ${b} not found`, 404);
+    if (method === "POST" && c === "dismiss") {
+      q.status = "dismissed";
+      q.answeredAt = iso(now());
+      emitQuestions();
+      emitOffice();
+      return q;
+    }
+    if (method === "POST" && c === "answer") {
+      const req = B as { answer?: string; resume?: boolean; override?: boolean };
+      if (!req.answer?.trim()) throw new ApiError("answer is required", 400);
+      if (req.resume && prayerState.active && !req.override) {
+        const n = prayerState.active.name;
+        throw new ApiError(`Sholat ${n.charAt(0).toUpperCase() + n.slice(1)} in progress — resuming is held until ${hhmm(Date.parse(prayerState.active.endsAt))}`, 423);
+      }
+      q.status = "answered";
+      q.answer = req.answer.trim();
+      q.answeredAt = iso(now());
+      let run: Run | null = null;
+      if (req.resume && q.sessionId) {
+        run = route("POST", ["runs"], new URLSearchParams(), {
+          project: q.project,
+          role: q.from,
+          taskId: q.task ?? undefined,
+          prompt: `Owner answered: ${q.answer}`,
+          permissionMode: "acceptEdits",
+          budgetUsd: 2,
+          override: req.override,
+        }) as Run;
+        run.parentRunId = q.runId;
+        run.questionId = q.id;
+        run.sessionId = q.sessionId;
+        q.resumedRun = run.id;
+      }
+      emitQuestions();
+      emitOffice();
+      return { question: q, run };
+    }
+  }
 
   if (a === "projects") {
     if (method === "GET" && !b) return db.projects.map(summary);
@@ -496,6 +658,10 @@ function route(method: string, p: string[], q: URLSearchParams, body: unknown): 
       const req = B as unknown as StartRunBody;
       findProject(req.project);
       if (!req.prompt?.trim()) throw new ApiError("prompt is required", 400);
+      if (prayerState.active && !req.override) {
+        const n = prayerState.active.name;
+        throw new ApiError(`Sholat ${n.charAt(0).toUpperCase() + n.slice(1)} in progress — launches are held until ${hhmm(Date.parse(prayerState.active.endsAt))}`, 423);
+      }
       if (db.runs.some((r) => r.project === req.project && r.role === req.role && r.status === "running"))
         throw new ApiError(`${req.role} already has a running run in ${req.project}`, 409);
       const id = `run-ui${Math.random().toString(16).slice(2, 6)}`;

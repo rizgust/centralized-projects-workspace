@@ -42,7 +42,7 @@ export function RunDetailPage() {
       </p>
       <div className="page-head">
         <div className="row-wrap">
-          <PixelAvatar role={run.role} scale={3} />
+          <PixelAvatar role={run.role} scale={3} project={run.project} />
           <div>
             <h1 className="pixel-title">{run.id}</h1>
             <p className="muted">

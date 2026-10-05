@@ -46,37 +46,37 @@ export interface ProjectSeed {
 
 export const PROJECTS: ProjectSeed[] = [
   {
-    id: "do-mpet",
-    name: "Do-Mpet",
+    id: "atlas-web",
+    name: "Atlas Web",
     type: "web-application",
     classification: "personal",
-    remote: "git@github.com:rizgust/do-mpet.git",
+    remote: "git@github.com:example/atlas-web.git",
     defaultBranch: "main",
     workingBranch: "feat/monthly-report",
     health: "green",
     repoExists: true,
     git: { branch: "feat/monthly-report", dirty: 3, ahead: 2, behind: 0 },
     features: [
-      { id: "F-01", title: "Telegram expense capture", status: "completed" },
+      { id: "F-01", title: "Expense capture", status: "completed" },
       { id: "F-02", title: "Receipt parsing (AI)", status: "active" },
       { id: "F-03", title: "Plans, credits & billing", status: "active" },
       { id: "F-04", title: "Monthly reports", status: "active" },
     ],
     decisions: [
-      { file: "ADR-001-supabase.md", title: "Use Supabase for auth + Postgres", status: "accepted" },
+      { file: "ADR-001-postgres.md", title: "Use managed Postgres with row-level security", status: "accepted" },
       { file: "ADR-002-credit-model.md", title: "Credit model: text 1 / receipt 5", status: "accepted" },
-      { file: "ADR-003-gemini.md", title: "Gemini Flash for receipt OCR", status: "proposed" },
+      { file: "ADR-003-ocr.md", title: "Hosted OCR model for receipt parsing", status: "proposed" },
     ],
-    projectMd: `# Do-Mpet\n\nPaid, multi-user, **Telegram-first** expense tracker.\n\n- Capture expenses by chatting or sending a receipt photo\n- AI parsing with usage limits per plan\n- Workspaces shared with family or team\n\n## Stack\n\n| Layer | Tech |\n|---|---|\n| Bot | Telegram Bot API |\n| Web | Next.js mini-app on Vercel |\n| Data | Supabase (Postgres + RLS) |\n| AI | Gemini Flash |\n`,
-    statusMd: `# Status\n\nHealth: green\n\nMonthly report chart is in progress; receipt parsing endpoint is mid-way.\n\n## Risks\n\n- Vercel cron limits on the Hobby plan (**blocked**, see TASK-009)\n- Gemini quota during promo week\n`,
-    currentReportMd: `# Current report — week 40\n\n**Done:** schema for workspaces, mini-app list view, expense summary card.\n\n**In progress:** monthly report chart (frontend agent running), Gemini receipt endpoint.\n\n**Next:** empty states, en/id toggle, Pro upgrade flow.\n\n> Owner decision needed: approve ADR-003 (Gemini) before promo week.\n`,
+    projectMd: `# Atlas Web\n\nMulti-user expense tracker web app.\n\n- Capture expenses from a form or a receipt photo\n- AI parsing with usage limits per plan\n- Shared workspaces\n\n## Stack\n\n| Layer | Tech |\n|---|---|\n| Web | React + Vite |\n| API | Go service |\n| Data | Postgres |\n`,
+    statusMd: `# Status\n\nHealth: green\n\nMonthly report chart is in progress; receipt parsing endpoint is mid-way.\n\n## Risks\n\n- Scheduler limits on the current hosting plan (**blocked**, see TASK-009)\n- OCR quota during launch week\n`,
+    currentReportMd: `# Current report — week 40\n\n**Done:** schema for workspaces, expense list view, expense summary card.\n\n**In progress:** monthly report chart (frontend agent running), receipt parsing endpoint.\n\n**Next:** empty states, language toggle, Pro upgrade flow.\n\n> Owner decision needed: approve ADR-003 before launch week.\n`,
   },
   {
     id: "pixel-quest",
     name: "Pixel Quest",
     type: "game",
     classification: "personal",
-    remote: "git@github.com:rizgust/pixel-quest.git",
+    remote: "git@github.com:example/pixel-quest.git",
     defaultBranch: "main",
     workingBranch: "dev",
     health: "yellow",
@@ -93,11 +93,11 @@ export const PROJECTS: ProjectSeed[] = [
     currentReportMd: `# Current report\n\nPlaytest #3 feedback is being synthesised. CI export builds for Windows/Linux are in progress.\n`,
   },
   {
-    id: "tele-supa",
-    name: "Tele-Supa",
+    id: "starter-kit",
+    name: "Starter Kit",
     type: "template",
     classification: "work",
-    remote: "git@github.com:rizgust/tele-supa.git",
+    remote: "git@github.com:example/starter-kit.git",
     defaultBranch: "main",
     workingBranch: "main",
     health: "green",
@@ -105,7 +105,7 @@ export const PROJECTS: ProjectSeed[] = [
     git: null,
     features: [{ id: "F-01", title: "Workspaces + plan flags", status: "completed" }],
     decisions: [],
-    projectMd: `# Tele-Supa\n\nTelegram + Supabase + Vercel starter extracted from Do-Mpet: workspaces, plan flags & limits, billing, local admin, en+id.\n`,
+    projectMd: `# Starter Kit\n\nReusable web app starter: workspaces, plan flags & limits, billing, local admin, i18n.\n`,
     statusMd: `# Status\n\nHealth: green\n\nRepo not cloned on this machine yet.\n`,
     currentReportMd: "",
   },
@@ -114,18 +114,18 @@ export const PROJECTS: ProjectSeed[] = [
 type T = [string, TaskStatus, Role, number, string, string, string | null, string];
 // id, status, owner, weight, priority, risk, feature, title
 const TASK_ROWS: Record<string, T[]> = {
-  "do-mpet": [
+  "atlas-web": [
     ["TASK-001", "completed", "analyst", 3, "high", "low", "F-02", "Scope receipt parsing accuracy targets"],
     ["TASK-002", "completed", "uiux", 2, "medium", "low", "F-01", "Design expense summary card"],
-    ["TASK-003", "completed", "backend", 5, "high", "medium", "F-03", "Supabase schema for workspaces"],
+    ["TASK-003", "completed", "backend", 5, "high", "medium", "F-03", "Database schema for workspaces"],
     ["TASK-004", "completed", "frontend", 3, "medium", "low", "F-01", "Mini-app expense list view"],
     ["TASK-005", "review", "frontend", 2, "medium", "low", "F-01", "Category picker with search"],
     ["TASK-006", "review", "backend", 3, "high", "medium", "F-03", "Usage credit counter"],
     ["TASK-007", "active", "frontend", 5, "high", "medium", "F-04", "Monthly report chart"],
-    ["TASK-008", "active", "backend", 8, "high", "high", "F-02", "Gemini receipt parsing endpoint"],
-    ["TASK-009", "blocked", "infra", 3, "medium", "medium", "F-04", "Vercel cron for monthly digest"],
+    ["TASK-008", "active", "backend", 8, "high", "high", "F-02", "Receipt parsing endpoint"],
+    ["TASK-009", "blocked", "infra", 3, "medium", "medium", "F-04", "Scheduled job for monthly digest"],
     ["TASK-010", "ready", "frontend", 1, "low", "low", null, "Empty states for new workspaces"],
-    ["TASK-011", "ready", "frontend", 2, "medium", "low", null, "Settings language toggle (en/id)"],
+    ["TASK-011", "ready", "frontend", 2, "medium", "low", null, "Settings language toggle"],
     ["TASK-012", "ready", "uiux", 3, "high", "low", "F-03", "Pro plan upgrade flow"],
     ["TASK-013", "backlog", "project-manager", 1, "low", "low", "F-03", "Pricing page copy review"],
     ["TASK-014", "backlog", "analyst", 5, "medium", "medium", null, "Churn signals from usage logs"],
@@ -140,8 +140,8 @@ const TASK_ROWS: Record<string, T[]> = {
     ["TASK-006", "ready", "backend", 8, "high", "high", "F-03", "Enemy pathfinding on hex grid"],
     ["TASK-007", "backlog", "project-manager", 2, "medium", "low", null, "Milestone M2 plan"],
   ],
-  "tele-supa": [
-    ["TASK-001", "completed", "infra", 2, "medium", "low", "F-01", "Supabase local stack script"],
+  "starter-kit": [
+    ["TASK-001", "completed", "infra", 2, "medium", "low", "F-01", "Local dev stack script"],
     ["TASK-002", "active", "project-manager", 1, "medium", "low", null, "Release checklist v0.3"],
     ["TASK-003", "ready", "analyst", 3, "medium", "low", null, "Audit plan flags vs limits"],
   ],
@@ -164,8 +164,8 @@ export function seedTasks(): Task[] {
         description: `${title}. Keep the change small and follow the existing conventions of the ${project} repo.`,
         requirements: ["Follow existing component and naming conventions", "No new dependencies without a decision log"],
         acceptance_criteria: ["Builds and type-checks", "Behaviour verified by qa-tester", "journal.md entry added"],
-        dependencies: id === "TASK-007" && project === "do-mpet" ? ["TASK-004"] : [],
-        blocks: id === "TASK-009" && project === "do-mpet" ? ["TASK-016"] : [],
+        dependencies: id === "TASK-007" && project === "atlas-web" ? ["TASK-004"] : [],
+        blocks: id === "TASK-009" && project === "atlas-web" ? ["TASK-016"] : [],
         collaborators: owner === "frontend" ? ["uiux"] : [],
         reviewers: ["project-manager"],
         notes:
@@ -188,7 +188,7 @@ export function seedRuns(now: number): Run[] {
   return [
     {
       id: "run-7f3a",
-      project: "do-mpet",
+      project: "atlas-web",
       role: "frontend",
       taskId: "TASK-007",
       prompt: "Implement TASK-007 Monthly report chart. Reuse useExpenses; hand off to qa-tester when done.",
@@ -209,7 +209,7 @@ export function seedRuns(now: number): Run[] {
     },
     {
       id: "run-5b21",
-      project: "do-mpet",
+      project: "atlas-web",
       role: "backend",
       taskId: "TASK-006",
       prompt: "Implement TASK-006 usage credit counter with tests.",
@@ -262,14 +262,14 @@ export const RUN_SCRIPT: { kind: "system" | "assistant_text" | "tool_use" | "too
   { kind: "tool_use", tool: "Edit", text: "src/components/reports/MonthlyChart.tsx (+64 −3)" },
   { kind: "tool_result", text: "Applied 1 edit" },
   { kind: "tool_use", tool: "Bash", text: "bun run typecheck" },
-  { kind: "stderr", text: "warning: 'formatIDR' is deprecated, use formatMoney" },
+  { kind: "stderr", text: "warning: 'formatCurrency' is deprecated, use formatMoney" },
   { kind: "tool_result", text: "exit 0 · 0 errors" },
   { kind: "tool_use", tool: "Edit", text: "src/lib/money.ts (+2 −2)" },
   { kind: "tool_result", text: "Applied 1 edit" },
   { kind: "tool_use", tool: "Bash", text: "bun run lint" },
   { kind: "tool_result", text: "exit 0" },
   { kind: "assistant_text", text: "Chart renders for empty months too. Updating journal.md before hand-off." },
-  { kind: "tool_use", tool: "Write", text: "projects/do-mpet/journal.md" },
+  { kind: "tool_use", tool: "Write", text: "projects/atlas-web/journal.md" },
   { kind: "tool_result", text: "ok" },
 ];
 
@@ -318,9 +318,9 @@ export function seedUsage(now: number, days = 90): UsageDay[] {
 }
 
 export const PROJECT_SHARE: [string, number][] = [
-  ["do-mpet", 0.54],
+  ["atlas-web", 0.54],
   ["pixel-quest", 0.27],
-  ["tele-supa", 0.11],
+  ["starter-kit", 0.11],
   ["workspace", 0.08],
 ];
 
@@ -328,14 +328,14 @@ export function seedSessions(now: number): SessionInfo[] {
   const r = rng(7);
   const rows: [string, "run" | "interactive", string | null, number, boolean, string][] = [
     ["workspace", "interactive", null, 3 * MIN, true, "claude-opus-4-1"],
-    ["do-mpet", "run", "run-7f3a", 4 * 1000, true, "claude-sonnet-4-5"],
-    ["do-mpet", "run", "run-5b21", HOUR + 48 * MIN, false, "claude-sonnet-4-5"],
+    ["atlas-web", "run", "run-7f3a", 4 * 1000, true, "claude-sonnet-4-5"],
+    ["atlas-web", "run", "run-5b21", HOUR + 48 * MIN, false, "claude-sonnet-4-5"],
     ["pixel-quest", "run", "run-3c09", 4 * HOUR + 21 * MIN, false, "claude-opus-4-1"],
-    ["do-mpet", "interactive", null, 7 * HOUR, false, "claude-opus-4-1"],
-    ["tele-supa", "interactive", null, DAY + 2 * HOUR, false, "claude-sonnet-4-5"],
+    ["atlas-web", "interactive", null, 7 * HOUR, false, "claude-opus-4-1"],
+    ["starter-kit", "interactive", null, DAY + 2 * HOUR, false, "claude-sonnet-4-5"],
     ["pixel-quest", "interactive", null, 2 * DAY, false, "claude-sonnet-4-5"],
     ["workspace", "interactive", null, 3 * DAY + 5 * HOUR, false, "claude-haiku-4-5"],
-    ["do-mpet", "interactive", null, 4 * DAY, false, "claude-opus-4-1"],
+    ["atlas-web", "interactive", null, 4 * DAY, false, "claude-opus-4-1"],
     ["pixel-quest", "interactive", null, 6 * DAY, false, "claude-sonnet-4-5"],
   ];
   return rows.map(([project, source, runId, ago, live, model], i) => {
