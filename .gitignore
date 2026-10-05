@@ -8,6 +8,7 @@ __ref
 /runtime/locks/*
 /runtime/logs/*
 /runtime/agent-messages/**/*.yaml
+/runtime/runs/
 !/runtime/**/.gitkeep
 
 # secrets and per-machine Claude Code / MCP config

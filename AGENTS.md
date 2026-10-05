@@ -28,6 +28,10 @@ Paths are relative to the repository root, which is also the workspace root.
     clean a working tree you did not create.
 19. `repos/`, `worktrees/` and `runtime/` are gitignored. Everything else in this repo is
     the control plane and is versioned.
+20. The Owner may act through the dashboard (`pcctl dashboard`): moving or creating tasks,
+    activating or registering projects, and launching or stopping agent runs. Treat those
+    file changes as Owner decisions. A run launched from the dashboard gets its project,
+    task file and these rules in its system prompt.
 
 ## Allowed paths when a project is active
 

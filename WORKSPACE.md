@@ -54,6 +54,8 @@ Agents must preserve project decisions and progress in files so that future sess
 | Product source code | `repos/<project-id>/` (gitignored) |
 | Session state, locks, agent messages (temporary, gitignored) | `runtime/` |
 | Tooling (`pcctl`) | `cmd/`, `internal/`, `go.mod` |
+| Dashboard (local web app) | `pcctl dashboard` → http://127.0.0.1:7777; UI in `web/` |
+| Model prices for cost estimates | `shared/knowledge/model-pricing.yaml` |
 
 ## History
 
