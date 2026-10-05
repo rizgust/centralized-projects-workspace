@@ -1,0 +1,22 @@
+# Claude API list prices in USD per million tokens, used by the dashboard to show an
+# "API-equivalent" cost for Claude Code usage. A Claude subscription is not billed per
+# token, so treat this as an estimate. Edit when prices change and update checked_at.
+#
+# Source: Anthropic first-party pricing, as cached by the claude-api skill on 2026-09-25.
+# Cache writes cost 1.25x input (5-minute TTL) or 2x input (1-hour TTL). Cache reads are
+# per model where Anthropic publishes a rate, otherwise 0.1x input.
+checked_at: 2026-09-25
+
+models:
+  claude-fable-5-1:  { input: 10.00, output: 50.00, cache_read: 0.25 }
+  claude-mythos-5-1: { input: 10.00, output: 50.00, cache_read: 0.25 }
+  claude-fable-5:    { input: 10.00, output: 50.00, cache_read: 1.00 }
+  claude-opus-5-5:   { input: 4.00,  output: 20.00, cache_read: 0.20 }
+  claude-opus-5:     { input: 5.00,  output: 25.00 }
+  claude-opus-4-8:   { input: 5.00,  output: 25.00 }
+  claude-opus-4-7:   { input: 5.00,  output: 25.00 }
+  claude-opus-4-6:   { input: 5.00,  output: 25.00 }
+  claude-sonnet-5-5: { input: 2.00,  output: 10.00, cache_read: 0.20 }
+  claude-sonnet-5:   { input: 2.00,  output: 10.00 }
+  claude-sonnet-4-6: { input: 3.00,  output: 15.00 }
+  claude-haiku-4-5:  { input: 1.00,  output: 5.00 }
