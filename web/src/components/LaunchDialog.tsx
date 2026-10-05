@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
 import type { PermissionMode, Role, Task } from "../api/types";
 import { ROLES } from "../api/types";
 import { roleLabel, useLive } from "../store";
@@ -7,7 +7,12 @@ import { Dialog, Field } from "./ui";
 import { useNavigate } from "react-router-dom";
 
 export function LaunchDialog() {
-  const { launch, closeLaunch, projects, activeProject, toast } = useLive();
+  const { launch, closeLaunch, projects, activeProject, toast, prayer } = useLive();
+  const [override, setOverride] = useState(false);
+  const [held, setHeld] = useState<string | null>(null);
+  const hold = prayer?.active && prayer.config.holdLaunches ? prayer.active : null;
+  const holdUntil = hold ? new Date(hold.endsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }) : null;
+  const holdName = hold ? hold.name.charAt(0).toUpperCase() + hold.name.slice(1) : null;
   const nav = useNavigate();
   const open = launch !== null;
   const [project, setProject] = useState("");
@@ -35,6 +40,8 @@ export function LaunchDialog() {
     setModel("");
     setConfirmFull(false);
     setErr(null);
+    setOverride(false);
+    setHeld(null);
   }, [launch, activeProject, projects]);
 
   useEffect(() => {
@@ -68,7 +75,8 @@ export function LaunchDialog() {
   };
 
   const budgetNum = Number(budget);
-  const valid = project && prompt.trim() && budgetNum > 0 && (mode === "acceptEdits" || confirmFull);
+  const blocked = (!!hold || !!held) && !override;
+  const valid = project && prompt.trim() && budgetNum > 0 && (mode === "acceptEdits" || confirmFull) && !blocked;
 
   const submit = async () => {
     if (!valid) return;
@@ -83,12 +91,14 @@ export function LaunchDialog() {
         permissionMode: mode,
         budgetUsd: budgetNum,
         model: model.trim() || undefined,
+        override: override || undefined,
       });
       toast(`Started ${roleLabel(role)} run ${run.id}`, "success");
       closeLaunch();
       nav(`/agents/runs/${encodeURIComponent(run.id)}`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      if (e instanceof ApiError && e.status === 423) setHeld(e.message);
+      else setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -120,6 +130,16 @@ export function LaunchDialog() {
         <p className="muted">Register a project first — runs need a project to work in.</p>
       ) : (
         <div className="form-grid">
+          {(hold || held) && (
+            <div className="info-box span-2" role="status">
+              <strong>{hold ? `Sholat ${holdName} berjamaah` : "Sholat in progress"}</strong>
+              <span>{hold ? `Agent launches are held until ${holdUntil}. The team is at the mushola.` : held}</span>
+              <label className="check">
+                <input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} />
+                Launch anyway (override the sholat hold)
+              </label>
+            </div>
+          )}
           <Field label="Project">
             <select value={project} onChange={(e) => setProject(e.target.value)}>
               {projects.map((p) => (
