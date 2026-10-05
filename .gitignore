@@ -1,8 +1,24 @@
-db/
-node_modules/
-*.local.env
+# execution plane: product repos and worktrees (cloned/created by pcctl init)
+__ref
+/repos/
+/worktrees/
+
+# runtime state (per machine, per session)
+/runtime/current-session.yaml
+/runtime/locks/*
+/runtime/logs/*
+/runtime/agent-messages/**/*.yaml
+!/runtime/**/.gitkeep
+
+# secrets and per-machine Claude Code / MCP config
 .env
+*.local.env
+.mcp.json
+.claude/settings.local.json
+
+# pcctl binary
 /pcctl
 /pcctl.exe
 /pcctl.exe~
 /bin/
+node_modules/
