@@ -1,0 +1,31 @@
+version: 1
+
+workspace:
+  name: project-centralized
+  # This repo is the workspace; all paths are relative to its root.
+  # repos/ and worktrees/ are gitignored and built by `pcctl init`.
+
+operating_model:
+  active_projects_per_session: 1
+  multiple_agents_allowed: true
+  owner_has_final_authority: true
+
+# Register projects here (see AGENTS.md "Adding a project"). Example:
+#
+#   my-project:
+#     name: My Project
+#     classification: personal        # personal | work
+#     type: web-application           # web-application | backend-service | game | template | ...
+#     project_path: projects/my-project
+#     repo_path: repos/my-project
+#     remote: git@github.com:<org>/<repo>.git
+#     default_branch: main
+#     working_branch: null
+projects: {}
+
+policies:
+  require_active_project: true
+  require_task_for_code_changes: true
+  require_decision_log_for_major_architecture_change: true
+  require_owner_approval_for_high_risk_change: true
+  require_owner_request_for_commit_and_push: true

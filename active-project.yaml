@@ -1,0 +1,7 @@
+active_project: null
+project_path: null
+repo_path: null
+
+session_policy:
+  allow_other_projects: false
+  exceptions: []
