@@ -22,6 +22,8 @@ interface Props {
   prayer: PrayerStatus | null;
   onInbox: (questionId?: string) => void;
   onTalk: () => void;
+  /** project -> epoch ms: the PM brings a fresh report to the Owner until then */
+  pmVisits?: Record<string, number>;
 }
 
 export { deskKey as stationKey } from "./world";
@@ -45,6 +47,7 @@ export function useAgentStyle(): AgentStyle {
 const STATE_TEXT: Record<string, string> = {
   working: "Working at desk",
   asking: "Waiting for your answer in the Owner's office",
+  proposing: "Waiting for you to approve a delegation proposal",
   blocked: "Blocked",
   review: "Reviewing in the meeting room",
   waiting: "Waiting for work",
@@ -55,7 +58,9 @@ const HUD_H = 52; // css px reserved above the map for the HUD panels
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export function OfficeCanvas({ office, extras, focusKey, onSelect, onRegister, prayer, onInbox, onTalk }: Props) {
+export function OfficeCanvas({ office, extras, focusKey, onSelect, onRegister, prayer, onInbox, onTalk, pmVisits }: Props) {
+  const visitsRef = useRef(pmVisits ?? {});
+  visitsRef.current = pmVisits ?? {};
   const [assets, setAssets] = useState(0);
   useEffect(() => onPropsReady(() => setAssets((n) => n + 1)), []);
   useEffect(() => onAtlasReady(() => setAssets((n) => n + 1)), []);
@@ -119,7 +124,7 @@ export function OfficeCanvas({ office, extras, focusKey, onSelect, onRegister, p
 
   // ---- world (rebuilt only when the floor plan changes)
   const cols = size.w >= worldWidth(3) + 16 ? 3 : 2;
-  const sig = JSON.stringify([cols, roomsOf(office).rooms.map((r) => [r.project, r.name, r.active, r.kind, (r.roles ?? []).join(","), r.workers.map((w) => w.role).sort()])]);
+  const sig = JSON.stringify([cols, roomsOf(office).rooms.map((r) => [r.project, r.name, r.active, r.kind, r.phase, (r.roles ?? []).join(","), r.workers.map((w) => w.role).sort()])]);
   const world: World = useMemo(() => buildWorld(office, cols), [sig, assets]); // eslint-disable-line react-hooks/exhaustive-deps
   const worldRef = useRef(world);
   worldRef.current = world;
@@ -175,6 +180,7 @@ export function OfficeCanvas({ office, extras, focusKey, onSelect, onRegister, p
       sim.isFemale = (a) => variantFor(a.project, a.worker.role, styleRef.current) === "female";
       sim.activeProject = activeRef.current;
       sim.setDiscussions(talksRef.current, activeRef.current);
+      sim.visits = visitsRef.current;
       sim.setPlan(planRef.current, Date.now());
       sim.update(dt, now, reduced);
       const ctx = c.getContext("2d")!;
@@ -273,6 +279,7 @@ export function OfficeCanvas({ office, extras, focusKey, onSelect, onRegister, p
     else if (h) {
       const a = simRef.current.actors.get(h.key);
       if (a?.worker.state === "asking") onInbox(a.worker.questionId ?? undefined);
+      else if (a?.worker.state === "proposing") onInbox("dlg");
       else if (a) onSelect({ project: a.project, worker: a.worker });
     } else if (inRegister(p.x, p.y)) onRegister();
   };
@@ -421,7 +428,10 @@ export function OfficeCanvas({ office, extras, focusKey, onSelect, onRegister, p
           <div className="office-tip" style={{ left: tip.x, top: tip.y }} role="tooltip">
             <strong>{roleLabel(tipActor.worker.role)}</strong>
             <span className={`state-pill state-${tipActor.worker.state}`}>{STATE_TEXT[tipActor.worker.state] ?? tipActor.worker.state}</span>
-            <span className="muted">{tipActor.project ? (office.rooms.find((r) => r.project === tipActor.project)?.name ?? tipActor.project) : "HQ"}</span>
+            <span className="muted">
+              {tipActor.worker.role === "analyst" && office.analyst ? "Owner's office · for " : ""}
+              {tipActor.project ? (office.rooms.find((r) => r.project === tipActor.project)?.name ?? tipActor.project) : tipActor.worker.role === "analyst" ? "the workspace" : "HQ"}
+            </span>
             {tipActor.worker.taskId && (
               <span className="tip-task">
                 {tipActor.worker.taskId}

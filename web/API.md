@@ -88,6 +88,12 @@ interface Office {
   hq: Worker[];                  // roles with no project context (shown when rooms is empty)
   interactiveSessions: number;   // live interactive Claude Code sessions in the workspace
   openQuestions: number;
+  // The ONE Analyst works with the Owner: seated in the Owner's office and serving every
+  // project. Project rooms and HQ never include the analyst role.
+  analyst: Worker & {
+    project: string | null;                                   // project the state refers to
+    busy?: { project: string; state: WorkerState; bubble: string }[];   // every project with demand
+  };
 }
 
 interface Question {
@@ -158,6 +164,20 @@ interface SystemHistory { points: { t: string; cpu: number; mem: number }[] }   
 | POST | `/api/discussions/{id}/messages` | `{text, override?}` | `{discussion, run}` |
 | POST | `/api/discussions/{id}/wrapup` | `{override?}` | `{discussion, run}` |
 | POST | `/api/discussions/{id}/close` · `/reopen` | | `Discussion` |
+| GET | `/api/projects/{id}/workflow` | | `WorkflowView` |
+| PATCH | `/api/projects/{id}/workflow/settings` | `{limits?, reports?}` | `WorkflowView` |
+| POST | `/api/projects/{id}/workflow/phase` | `{phase, note?}` | `WorkflowView` (manual move, e.g. intake→brainstorm, execution→done) |
+| POST | `/api/projects/{id}/workflow/plan` | `{comments?, override?}` | `{run}`: Analyst prepares the package (intake/brainstorm → planning) |
+| POST | `/api/projects/{id}/workflow/request-changes` | `{comments, override?}` | `{run}`: review → planning (Analyst revises) |
+| POST | `/api/projects/{id}/workflow/approve` | `{comment?, override?}` | `{readied, run, warning?}`: review → execution, ADR, PM kickoff |
+| GET · PUT | `/api/projects/{id}/docs/{path}` | PUT `{content}` | `{path, content, exists}`: read or write a Markdown file inside the project (e.g. `brief.md`, `requirements/product.md`); other paths are rejected |
+| GET | `/api/projects/{id}/delegations` | | `Delegation[]` (newest first) |
+| POST | `/api/projects/{id}/delegations/{did}/approve` | `{tasks?: string[], budgets?: {[task]: usd}, comment?}` | `Delegation` |
+| POST | `/api/projects/{id}/delegations/{did}/reject` | `{comment?}` | `Delegation` |
+| POST | `/api/projects/{id}/delegations/propose` | `{override?}` | `Run`: ask the PM for a proposal now |
+| GET | `/api/projects/{id}/reports` | `?body=1` | `ReportFile[]` (newest first) |
+| POST | `/api/projects/{id}/report` | `{note?, override?}` | `Run`: on-demand PM report |
+| POST | `/api/projects/{id}/arrange` | `{role, topic, override?}` | `{run}`: the PM briefs the role, then a discussion opens |
 | GET | `/api/prayer` | | `PrayerStatus` |
 | GET | `/api/questions` | | `Question[]` (open first, newest first) |
 | POST | `/api/questions/{id}/answer` | `{answer, resume?: boolean, override?: boolean}` | `{question: Question, run: Run \| null}` |
@@ -165,6 +185,42 @@ interface SystemHistory { points: { t: string; cpu: number; mem: number }[] }   
 | GET | `/api/events` | `?token=` (SSE) | event stream, below |
 
 Starting a run with a `taskId` whose task is `backlog`/`ready` moves the task to `active`.
+
+### Owner workflow
+
+```ts
+type Phase = "intake" | "brainstorm" | "planning" | "review" | "execution" | "done";
+interface WorkflowLimits { maxParallel: number; dailyBudgetUsd: number; budgetPerWeight: number;
+  maxTaskBudgetUsd: number; permissionMode: "acceptEdits" | "bypassPermissions";
+  pmBudgetUsd: number; analystBudgetUsd: number; model: string }   // model "" = default
+interface WorkflowReports { milestones: boolean; dailyAt: string; everyHours: number; onDemand: boolean }
+interface Workflow { phase: Phase; delegation: "propose"; limits: WorkflowLimits; reports: WorkflowReports;
+  planApprovedAt: string | null; history: { phase: Phase; at: string; by: string; note?: string }[] }
+interface DelegationItem { task: string; role: Role; budgetUsd: number; permissionMode: string; note: string;
+  status: "proposed" | "queued" | "launched" | "done" | "failed" | "skipped"; runId: string | null; detail: string }
+interface Delegation { id: string; createdAt: string; status: "proposed" | "approved" | "rejected" | "launched";
+  reason: string; items: DelegationItem[]; decidedAt: string | null; comment: string; path: string }
+interface ReportFile { file: string; type: "kickoff" | "milestone" | "daily" | "progress" | "on-demand" | "final" | "report";
+  at: string; title: string; body?: string }
+interface WorkflowView {
+  project: string; workflow: Workflow;
+  plan: string | null; handover: string | null;          // plan.md / handover.md (markdown)
+  tasks: number; totalWeight: number; weightByRole: Record<string, number>;
+  adjusted: { task: string; title: string; from: number; to: number }[];   // Owner weight changes
+  notReady: { task: string; title: string; missing: string[] }[];         // backlog tasks failing DoR
+  delegations: Delegation[]; spentToday: number; runningWork: number; pmBusy: boolean;
+  lastReportAt: string | null; reports: ReportFile[];
+}
+```
+
+- `Run.purpose`: `work` | `discussion` | `plan` | `revise` | `kickoff` | `delegate` | `report` | `arrange`.
+- In review, `PATCH .../tasks/{id}` with a new `weight` sets `Task.proposedWeight` (the
+  Analyst's original) and adds a review note.
+- Plan and revise runs that succeed move the project from planning to review.
+- Office rooms add `phase` and `pendingDelegations`. While a proposal waits, the PM worker
+  has state `"proposing"` (bubble "DLG") and goes to the Owner's room.
+- The SSE event `workflow` carries `{project}` and is sent whenever a project's workflow,
+  delegations or reports change; refetch `GET .../workflow`.
 
 ### Project kinds
 

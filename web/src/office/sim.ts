@@ -1,7 +1,7 @@
 // Virtual workers: each Worker becomes an Actor that walks the nav graph to the spot its
 // state calls for (desk, meeting table, break room...). Idle workers wander.
 import type { Office, Worker } from "../api/types";
-import { deskKey, roomsOf, route, type Pt, type Spot, type World } from "./world";
+import { ANALYST_KEY, deskKey, roomsOf, route, type Pt, type Spot, type World } from "./world";
 import type { Dir } from "./sprites";
 import { directive, timeline, type Directive, type Participant, type SholatPlan } from "./sholat";
 
@@ -34,6 +34,11 @@ export class Sim {
   plan: SholatPlan | null = null;
   /** decides the men's / women's side (same variant as the sprite) */
   isFemale: (a: Actor) => boolean = () => false;
+  /** project -> epoch ms: the PM visits the Owner with a fresh report */
+  visits: Record<string, number> = {};
+  isVisiting(a: Actor): boolean {
+    return a.worker.role === "project-manager" && !!a.project && (this.visits[a.project] ?? 0) > Date.now();
+  }
   /** actor key -> live discussion (topic, running) */
   talks = new Map<string, { topic: string; running: boolean }>();
 
@@ -41,6 +46,11 @@ export class Sim {
   setDiscussions(list: { role: string; project: string | null; topic: string; running: string | null }[], activeProject: string | null) {
     const m = new Map<string, { topic: string; running: boolean }>();
     for (const d of list) {
+      // the Analyst talks from their own desk beside the Owner
+      if (d.role === "analyst" && this.actors.has(ANALYST_KEY) && !m.has(ANALYST_KEY)) {
+        m.set(ANALYST_KEY, { topic: d.topic, running: !!d.running });
+        continue;
+      }
       const tries = [d.project ? deskKey(d.project, d.role) : null, deskKey(null, d.role), activeProject ? deskKey(activeProject, d.role) : null];
       let key = tries.find((k) => k && this.actors.has(k) && !m.has(k)) ?? null;
       if (!key) key = [...this.actors.values()].find((a) => a.worker.role === d.role && !m.has(a.key))?.key ?? null;
@@ -99,6 +109,32 @@ export class Sim {
             sholat: null,
           });
       }
+    // the one workspace Analyst, at their desk in the Owner's office
+    if (office.analyst) {
+      const w = office.analyst;
+      seen.add(ANALYST_KEY);
+      const a = this.actors.get(ANALYST_KEY);
+      if (a) {
+        a.worker = w;
+        a.project = w.project;
+      } else
+        this.actors.set(ANALYST_KEY, {
+          key: ANALYST_KEY,
+          project: w.project,
+          worker: w,
+          x: 0,
+          y: 0,
+          dir: "down",
+          path: [],
+          target: null,
+          at: null,
+          walked: 0,
+          idleSpot: null,
+          idleUntil: 0,
+          arrivedAt: 0,
+          sholat: null,
+        });
+    }
     for (const [k, a] of this.actors)
       if (!seen.has(k)) {
         if (a.at) a.at.occupant = null;
@@ -111,15 +147,24 @@ export class Sim {
     const w = this.world!;
     if (a.sholat) return a.sholat.spot;
     const desk = w.desks.get(a.key)?.seat ?? null;
+    if (this.isVisiting(a) && w.spots.get("owner:visit")) {
+      a.idleSpot = null;
+      return w.spots.get("owner:visit")!;
+    }
+    if (a.key === ANALYST_KEY && (this.talks.has(a.key) || a.worker.state === "asking")) {
+      a.idleSpot = null;
+      return desk;
+    }
     if (this.talks.has(a.key) && w.talkSeats.length) {
       a.idleSpot = null;
       const keys = [...this.talks.keys()].sort();
       return w.talkSeats[Math.max(0, keys.indexOf(a.key)) % w.talkSeats.length];
     }
     switch (a.worker.state) {
-      case "asking": {
+      case "asking":
+      case "proposing": {
         a.idleSpot = null;
-        const askers = [...this.actors.values()].filter((x) => x.worker.state === "asking").map((x) => x.key).sort();
+        const askers = [...this.actors.values()].filter((x) => x.worker.state === "asking" || x.worker.state === "proposing").map((x) => x.key).sort();
         const i = askers.indexOf(a.key);
         return w.ownerQueue.length ? w.ownerQueue[Math.max(0, i) % w.ownerQueue.length] : desk;
       }
@@ -139,8 +184,10 @@ export class Sim {
         const prev = a.idleSpot;
         if (prev && prev.occupant === a.key) prev.occupant = null;
         const free = w.idleSpots.filter((s) => (!s.occupant || s.occupant === a.key) && s !== prev);
-        const pickDesk = Math.random() < 0.3 || !free.length;
-        const next = pickDesk ? desk : free[Math.floor(Math.random() * free.length)];
+        // the Analyst mostly stays at the desk; sometimes fetches coffee or water
+        const pool = a.key === ANALYST_KEY ? free.filter((s) => /coffee|cooler|alcove/.test(s.id)) : free;
+        const pickDesk = Math.random() < (a.key === ANALYST_KEY ? 0.75 : 0.3) || !pool.length;
+        const next = pickDesk ? desk : pool[Math.floor(Math.random() * pool.length)];
         a.idleSpot = next;
         a.idleUntil = 0; // starts counting on arrival
         if (next && next !== desk) next.occupant = a.key;

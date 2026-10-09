@@ -6,7 +6,7 @@ import * as P from "./props";
 import { OUT } from "./props";
 import { sprite, ANCHOR_X, ANCHOR_Y, type Dir } from "./sprites";
 import type { Actor, Sim } from "./sim";
-import type { Chair, Desk, World } from "./world";
+import { ANALYST_KEY, type Chair, type Desk, type World } from "./world";
 import { propPart } from "./propAtlas";
 
 function drawChair(ctx: Ctx, c: Chair) {
@@ -23,6 +23,8 @@ export interface LiveExtras {
   /** actor key -> recently finished run outcome (shows done / sweat icon) */
   recent: Map<string, "done" | "sweat">;
   openQuestions: number;
+  /** project id -> display name (Analyst's "for <project>" tag) */
+  names?: Record<string, string>;
 }
 
 export interface Hit {
@@ -157,7 +159,7 @@ export function drawFrame(ctx: Ctx, w: World, sim: Sim, ex: LiveExtras, o: Frame
     if (o.hover === a.key || o.focus === a.key) {
       for (let k = 0; k < 3; k++) rect(ctx, x - 3 + k, box.y - 6 + k, 7 - k * 2, 1, "#ffffff");
     }
-    bubbles.push(() => bubble(ctx, sim, a, x, box.y, t, ex.recent.get(a.key)));
+    bubbles.push(() => bubble(ctx, sim, a, x, box.y, t, ex.recent.get(a.key), ex.names));
   };
 
   // ---- cubicle islands: one item per (A,B) pair, so desk A, partition and B monitors stack right
@@ -193,7 +195,7 @@ export function drawFrame(ctx: Ctx, w: World, sim: Sim, ex: LiveExtras, o: Frame
         let femaleWork = false;
         if (seated && a) {
           const v = variantOf(a);
-          const pi = poseFor(a, t, o.reduced, v);
+          const pi = analystPose(sim, a, t, o.reduced) ?? poseFor(a, t, o.reduced, v);
           const r = resolve(v, a.worker.role, pi.pose, pi.dir, pi.frame, pi.atlasPose);
           if (r && r.pose === "work" && r.variant === "female") {
             femaleWork = true;
@@ -246,6 +248,11 @@ export function drawFrame(ctx: Ctx, w: World, sim: Sim, ex: LiveExtras, o: Frame
     if (sp?.kind === "talkDesk") {
       clipY = sp.clipY;
       sortY = sp.y - 12;
+    }
+    if (sim.isVisiting(a) && sp?.id === "owner:visit" && !a.sholat) {
+      pi.pose = "read";
+      pi.dir = "down";
+      pi.atlasPose = "tablet";
     }
     if (talk && sp && !a.sholat && (sp.kind === "talkDesk" || sp.kind === "couch")) {
       pi.pose = sp.kind === "couch" ? "couch" : "stand";
@@ -315,7 +322,7 @@ export function drawFrame(ctx: Ctx, w: World, sim: Sim, ex: LiveExtras, o: Frame
           ctx.fillStyle = gr;
           ctx.fillRect(L.x - 14, L.y - 20, 54, 46);
         }
-        if (live) bubbles.push(() => textBubble(ctx, ow.x - 46, ow.y - 50, `${ex.interactive} LIVE`, "normal"));
+        if (live) bubbles.push(() => textBubble(ctx, ow.x + 16, ow.y - 52, `${ex.interactive} LIVE`, "normal"));
         hits.push({ key: "__owner", x: ow.x - 14, y: ow.y - 40, w: 28, h: 30 });
         if (ex.openQuestions > 0)
           bubbles.push(() => {
@@ -397,9 +404,23 @@ function screen(ctx: Ctx, x: number, y: number, state: string | undefined, t: nu
   }
 }
 
-function bubble(ctx: Ctx, sim: Sim, a: Actor, x: number, top: number, t: number, recent: "done" | "sweat" | undefined) {
+/** The Analyst swivels toward the Owner (screen right) to ask or discuss, from their desk. */
+function analystPose(sim: Sim, a: Actor, t: number, reduced: boolean): PoseInfo | null {
+  if (a.key !== ANALYST_KEY || a.sholat) return null;
+  const talk = sim.talks.get(a.key);
+  if (talk) return talk.running ? { pose: "stand", dir: "down", frame: reduced ? 0 : Math.floor(t / 500) % 2, dx: 0, atlasPose: "talk" } : { pose: "stand", dir: "right", frame: 0, dx: 0 };
+  if (a.worker.state === "asking") return { pose: "stand", dir: "right", frame: 0, dx: 0 };
+  if (a.worker.state === "review") return { pose: "read", dir: "down", frame: 0, dx: 0, atlasPose: "tablet" };
+  return null;
+}
+
+function bubble(ctx: Ctx, sim: Sim, a: Actor, x: number, top: number, t: number, recent: "done" | "sweat" | undefined, names?: Record<string, string>) {
   const w = a.worker;
   const atSpot = !a.path.length && !!a.at;
+  if (a.key === ANALYST_KEY && atSpot && a.project && !a.sholat && !sim.talks.has(a.key) && w.state !== "idle") {
+    const label = fitText(`FOR ${(names?.[a.project] ?? a.project).toUpperCase()}`, 90);
+    textBubble(ctx, x + 6, top - 26, label, "soft");
+  }
   const icon = (name: IconName) => drawIcon(ctx, name, x + 2, top - 1);
   if (a.sholat) {
     if (w.runId || w.state === "working") pauseBadge(ctx, x + 6, top - 12);
@@ -408,7 +429,10 @@ function bubble(ctx: Ctx, sim: Sim, a: Actor, x: number, top: number, t: number,
   const talk = sim.talks.get(a.key);
   if (talk && atSpot) {
     // topic to the right of the speaker; typing dots above while the reply is running
-    textBubble(ctx, x + 8, top - 13, fitText(talk.topic.toUpperCase(), 96), "soft");
+    // the Analyst sits left of the Owner: put the topic on the left so it never covers the Owner
+    const topic = fitText(talk.topic.toUpperCase(), 96);
+    const tx = a.key === ANALYST_KEY ? x - textWidth(topic) - 14 : x + 8;
+    textBubble(ctx, tx, top - 13, topic, "soft");
     if (talk.running) textBubble(ctx, x - 4, top - 26, ".".repeat(1 + (Math.floor(t / 350) % 3)), "normal");
     return;
   }
@@ -418,6 +442,15 @@ function bubble(ctx: Ctx, sim: Sim, a: Actor, x: number, top: number, t: number,
     return;
   }
   if (recent && icon(recent)) return;
+  if (sim.isVisiting(a) && atSpot) {
+    textBubble(ctx, x + 6, top - 12, "REPORT", "normal");
+    return;
+  }
+  if (w.state === "proposing") {
+    const bob = Math.round(Math.sin(t / 380) * 1.5);
+    textBubble(ctx, x + 6, top - 12 + bob, "DLG", "normal");
+    return;
+  }
   if (w.state === "asking") {
     // bobbing question mark over the head while waiting in the Owner's office
     const bob = Math.round(Math.sin(t / 380) * 1.5);

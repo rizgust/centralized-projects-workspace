@@ -5,6 +5,7 @@ import { TASK_STATUSES } from "../api/types";
 import { useLive } from "../store";
 import { Empty, HealthBadge, KindBadge, Progress, Tabs } from "../components/ui";
 import { STATUS_LABEL, STATUS_SYMBOL } from "../fmt";
+import { PhaseBadge } from "./WorkflowPanel";
 
 export function ProjectsPage() {
   const live = useLive();
@@ -108,6 +109,9 @@ function GitLine({ p }: { p: ProjectSummary }) {
 }
 
 function ProjectCard({ p, onActivate, onTasks }: { p: ProjectSummary; onActivate: () => void; onTasks: () => void }) {
+  const live = useLive();
+  const wf = live.workflows[p.id];
+  const pending = wf?.delegations.filter((d) => d.status === "proposed").length ?? 0;
   const total = TASK_STATUSES.reduce((a, s) => a + (p.taskCounts[s] ?? 0), 0);
   return (
     <article className={`card project-card${p.active ? " is-active" : ""}`}>
@@ -124,6 +128,9 @@ function ProjectCard({ p, onActivate, onTasks }: { p: ProjectSummary; onActivate
       </header>
       <div className="row-wrap">
         <KindBadge kind={p.kind} />
+        <PhaseBadge phase={wf?.workflow.phase} />
+        {wf?.workflow.phase === "review" && <span className="badge badge-warn">awaiting your review</span>}
+        {pending > 0 && <span className="badge badge-warn">{pending} proposal{pending > 1 ? "s" : ""} to approve</span>}
         <HealthBadge health={p.health} />
         {p.repoMode === "none" ? (
           <span className="badge">No repository</span>
@@ -146,11 +153,14 @@ function ProjectCard({ p, onActivate, onTasks }: { p: ProjectSummary; onActivate
         <button className="btn btn-sm" disabled={p.active} onClick={onActivate}>
           {p.active ? "✓ Active" : "Activate"}
         </button>
+        <Link className="btn btn-sm btn-primary" to={`/projects/${encodeURIComponent(p.id)}`}>
+          Workflow →
+        </Link>
         <button className="btn btn-sm" onClick={onTasks}>
           Open tasks
         </button>
-        <Link className="btn btn-sm btn-ghost" to={`/projects/${encodeURIComponent(p.id)}`}>
-          Details →
+        <Link className="btn btn-sm btn-ghost" to={`/projects/${encodeURIComponent(p.id)}?tab=docs`}>
+          Docs
         </Link>
       </footer>
     </article>

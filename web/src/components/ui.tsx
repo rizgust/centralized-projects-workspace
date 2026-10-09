@@ -148,6 +148,17 @@ export function Toasts() {
             {t.kind === "success" ? "✓" : t.kind === "error" ? "✕" : "i"}
           </span>
           <span className="toast-text">{t.text}</span>
+          {t.href && (
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                window.location.hash = t.href!.replace(/^#/, "");
+                dismissToast(t.id);
+              }}
+            >
+              Open
+            </button>
+          )}
           <button className="btn btn-ghost btn-icon" onClick={() => dismissToast(t.id)} aria-label="Dismiss notification">
             ✕
           </button>

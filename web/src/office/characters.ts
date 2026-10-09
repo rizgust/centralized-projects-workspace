@@ -106,6 +106,7 @@ function strHash(s: string): number {
 /** Deterministic: Mixed = hash(projectId + role) % 2; HQ (no project) uses the role id alone. */
 export function variantFor(project: string | null | undefined, role: string, s: AgentStyle = style): Variant {
   if (s !== "mixed") return s;
+  if (role === "analyst") project = null;
   const vs = (manifest?.variants as Variant[] | undefined) ?? ["female", "male"];
   return vs[strHash((project ?? "") + role) % vs.length] ?? "male";
 }

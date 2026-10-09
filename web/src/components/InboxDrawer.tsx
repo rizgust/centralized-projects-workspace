@@ -6,11 +6,13 @@ import { ROLE_FULL, roleLabel, useLive } from "../store";
 import { ago } from "../fmt";
 import { PixelAvatar } from "./PixelAvatar";
 import { Dialog } from "./ui";
+import { DelegationCard } from "../pages/WorkflowPanel";
 
 /** Owner inbox: open questions from agents, answered in place (optionally resuming the run). */
 export function InboxDrawer() {
   const live = useLive();
   const open = live.questions.filter((q) => q.status === "open");
+  const approvals = Object.values(live.workflows).flatMap((w) => w.delegations.filter((d) => d.status === "proposed").map((d) => ({ project: w.project, d })));
   const focus = typeof live.inbox === "string" ? live.inbox : null;
   const ordered = focus ? [...open].sort((a, b) => (a.id === focus ? -1 : b.id === focus ? 1 : 0)) : open;
   const [done, setDone] = useState<{ q: Question; runId: string | null }[]>([]);
@@ -25,7 +27,7 @@ export function InboxDrawer() {
       variant="drawer"
       title={
         <span>
-          Owner inbox <span className="muted small">{open.length} open</span>
+          Owner inbox <span className="muted small">{open.length} questions · {approvals.length} approvals</span>
         </span>
       }
     >
@@ -41,6 +43,24 @@ export function InboxDrawer() {
             ) : null}
           </div>
         ))}
+        {(approvals.length > 0 || live.inbox === "dlg") && (
+          <section className="stack-sm" aria-label="Approvals">
+            <h3 className="inbox-sec">Approvals</h3>
+            {approvals.length === 0 && <p className="muted small">No delegation proposals waiting.</p>}
+            {approvals.map(({ project, d }) => (
+              <div key={project + d.id} className="stack-sm">
+                <span className="muted small">
+                  {live.projects.find((p) => p.id === project)?.name ?? project} ·{" "}
+                  <Link to={`/projects/${encodeURIComponent(project)}`} onClick={live.closeInbox}>
+                    open workflow
+                  </Link>
+                </span>
+                <DelegationCard project={project} d={d} compact />
+              </div>
+            ))}
+          </section>
+        )}
+        <h3 className="inbox-sec">Questions</h3>
         {ordered.length === 0 && <p className="muted">No open questions. The team isn't waiting on you.</p>}
         {ordered.map((q) => (
           <QuestionCard key={q.id} q={q} onDone={(runId) => setDone((d) => [{ q, runId }, ...d])} />

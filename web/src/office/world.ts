@@ -120,6 +120,8 @@ type Slot =
   | { kind: "garden"; span: 1 };
 
 export const deskKey = (project: string | null, role: string) => `${project ?? "hq"}/${role}`;
+/** The one workspace Analyst (Office.analyst) sits in the Owner's office. */
+export const ANALYST_KEY = "owner/analyst";
 
 export function roomsOf(office: Office): { rooms: OfficeRoom[]; hq: boolean } {
   if (office.rooms.length) return { rooms: office.rooms, hq: false };
@@ -159,6 +161,7 @@ class Builder {
   mushola: Mushola | null = null;
   ownerQueue: Spot[] = [];
   talkSeats: Spot[] = [];
+  analystNode: number | null = null;
   doors: { corridor: number; x: number; inside: number }[] = [];
   constructor(public g: Ctx) {}
   node(x: number, y: number): number {
@@ -266,6 +269,7 @@ function projectRoom(b: Builder, x: number, y: number, room: OfficeRoom, hq: boo
 
   // ---- wall decor
   const sign = plaque(g, ix + 169, iy + 4, hq ? "HQ" : room.name, room.active && !hq, 110);
+
   if (room.active && !hq) {
     rect(g, sign.x - 3, iy + 6, 2, 5, "#ffd76a");
     rect(g, sign.x + sign.w + 1, iy + 6, 2, 5, "#ffd76a");
@@ -295,13 +299,22 @@ function projectRoom(b: Builder, x: number, y: number, room: OfficeRoom, hq: boo
   const laneBot = dA + 150;
   const aisles = [ix + 18, ix + 120, ix + 219, ix + 326];
   const centers = [ix + 70, ix + 169, ix + 268];
+  // The Analyst works in the Owner's office: back row = PM, UI/UX; front row = FE, BE, Infra.
+  const AROLES: Role[] = ["project-manager", "uiux"];
+  const BROLES: Role[] = ["frontend", "backend", "infra"];
   for (let k = 0; k < 3; k++) {
     const cx = centers[k];
-    rect(g, cx - 31, dA + 16, 62, 2, P.SHADOW);
+    if (k < AROLES.length) {
+      rect(g, cx - 31, dA + 16, 62, 2, P.SHADOW);
+      plaque(g, cx, iy + 41, SHORT[AROLES[k]]);
+    } else {
+      // planning corner where the third back-row desk used to be
+      prop(g, "whiteboard_stand", cx, dA + 34);
+      prop(g, "plant_c", cx + 40, dA + 30);
+    }
     // B desk (atlas desk_single: desk + monitor + chair, worker sits with back to viewer)
     prop(g, "desk_single", cx, dA + 76);
-    plaque(g, cx, iy + 41, SHORT[ROLES[k]]);
-    const lb = SHORT[ROLES[k + 3]];
+    const lb = SHORT[BROLES[k]];
     const lw = textWidth(lb) + 6;
     rect(g, cx - lw / 2 - 1, dA + 78, lw + 2, 9, OUT);
     rect(g, cx - lw / 2, dA + 79, lw, 7, "#3b3a52");
@@ -327,10 +340,12 @@ function projectRoom(b: Builder, x: number, y: number, room: OfficeRoom, hq: boo
   for (const ax of aisles.slice(0, 3)) b.link(lf.get(ax)!, lbot.get(ax)!);
   for (let k = 0; k < 3; k++) {
     const cx = centers[k];
-    const dk = deskKey(project, ROLES[k]);
-    const seatA = b.spot({ id: `seat:${dk}`, x: cx, y: dA + 11, node: lb.get(cx)!, via: [], kind: "deskA", dir: "down", idle: false, clipY: dA + 3 });
-    b.desks.set(dk, { key: dk, project, role: ROLES[k], row: "A", cx, dA, seat: seatA, screens: [], backs: [{ x: cx - 16, y: dA - 1 }, { x: cx + 1, y: dA - 1 }], cards: { x: cx + 19, y: dA + 2 } });
-    const dkB = deskKey(project, ROLES[k + 3]);
+    if (k < AROLES.length) {
+      const dk = deskKey(project, AROLES[k]);
+      const seatA = b.spot({ id: `seat:${dk}`, x: cx, y: dA + 11, node: lb.get(cx)!, via: [], kind: "deskA", dir: "down", idle: false, clipY: dA + 3 });
+      b.desks.set(dk, { key: dk, project, role: AROLES[k], row: "A", cx, dA, seat: seatA, screens: [], backs: [{ x: cx - 16, y: dA - 1 }, { x: cx + 1, y: dA - 1 }], cards: { x: cx + 19, y: dA + 2 } });
+    }
+    const dkB = deskKey(project, BROLES[k]);
     const sx = cx - 1;
     const seatB = b.spot({
       id: `seat:${dkB}`,
@@ -343,7 +358,7 @@ function projectRoom(b: Builder, x: number, y: number, room: OfficeRoom, hq: boo
       idle: false,
       chair: { kind: "part", name: "desk_single", sx: 20, sy: 31, sw: 25, sh: 22, dx: cx - 32 + 20, dy: dA + 23 + 31 },
     });
-    b.desks.set(dkB, { key: dkB, project, role: ROLES[k + 3], row: "B", cx, dA, seat: seatB, screens: [{ x: cx - 9, y: dA + 29 }], backs: [], cards: { x: cx + 14, y: dA + 34 } });
+    b.desks.set(dkB, { key: dkB, project, role: BROLES[k], row: "B", cx, dA, seat: seatB, screens: [{ x: cx - 9, y: dA + 29 }], backs: [], cards: { x: cx + 14, y: dA + 34 } });
   }
   const pid = project ?? "hq";
   b.spot({ id: `printer:${pid}`, x: ix + 84, y: dA + 150, node: lbot.get(ix + 84)!, via: [], kind: "stand", dir: "up", idle: true });
@@ -362,6 +377,24 @@ function projectRoom(b: Builder, x: number, y: number, room: OfficeRoom, hq: boo
   const inside = b.node(doorX, laneB);
   b.link(inside, lb.get(ix + 120)!);
   return inside;
+}
+
+// ------------------------------------------------------------------ phase signs
+const PHASE_COLOR: Record<string, string> = { intake: "#7a8396", brainstorm: "#9085e9", planning: "#3a86ff", review: "#e0a52b", execution: "#2f8a5b", done: "#52514e" };
+/** Phase plaque on the floor by the room's door ("AWAITING YOUR REVIEW" in review). Drawn last. */
+function phaseSigns(g: Ctx, x: number, y: number, _ix: number, _iy: number, room: OfficeRoom, h: number) {
+  const ph = room.phase;
+  if (!ph) return;
+  const review = ph === "review";
+  const msg = review ? "REVIEW - AWAITING YOU" : ph.toUpperCase();
+  const mw = textWidth(msg) + 10;
+  const mx = Math.round(x + 18);
+  const my = y + h - CAP - 18;
+  rect(g, mx + 2, my + 12, mw - 4, 3, P.SHADOW);
+  rect(g, mx, my, mw, 12, OUT);
+  rect(g, mx + 1, my + 1, mw - 2, 10, review ? "#ffd76a" : (PHASE_COLOR[ph] ?? "#3b3a52"));
+  rect(g, mx + 1, my + 1, mw - 2, 1, review ? "#fff0b0" : "rgba(255,255,255,0.25)");
+  drawText(g, msg, mx + 5, my + 4, review ? OUT : "#ffffff");
 }
 
 // ------------------------------------------------------------------ rooms by project kind
@@ -426,7 +459,7 @@ function kindRoom(b: Builder, x: number, y: number, room: OfficeRoom, index: num
   b.rooms.push({ x, y, w: RW, h: RH_P, ix, iy, iw: s.iw, ih: s.ih, kind: "project", project, name: room.name, active: room.active });
   roomHeader(g, ix, iy, room, kind);
 
-  const roles = ROLES.filter((r) => (room.roles ?? ROLES).includes(r));
+  const roles = ROLES.filter((r) => r !== "analyst" && (room.roles ?? ROLES).includes(r));
   const n = Math.max(1, roles.length);
   const gap = n >= 4 ? 80 : 90;
   const centers = roles.map((_, i) => Math.round(ix + 169 + (i - (n - 1) / 2) * gap));
@@ -524,8 +557,9 @@ function kindRoom(b: Builder, x: number, y: number, room: OfficeRoom, index: num
 
 function anyRoom(b: Builder, x: number, y: number, room: OfficeRoom, hq: boolean, index: number, door: "top" | "bottom"): number {
   const kind = room.kind ?? "software";
-  if (hq || kind === "software" || !KIND_THEME[kind]) return projectRoom(b, x, y, room, hq, index, door);
-  return kindRoom(b, x, y, room, index, door, kind);
+  const id = hq || kind === "software" || !KIND_THEME[kind] ? projectRoom(b, x, y, room, hq, index, door) : kindRoom(b, x, y, room, index, door, kind);
+  if (!hq) phaseSigns(b.g, x, y, x + CAP, y + CAP, room, RH_P);
+  return id;
 }
 
 export const SHORT: Record<Role, string> = {
@@ -691,6 +725,19 @@ function ownerOffice(b: Builder, x: number, y: number, door: "top" | "bottom"): 
   const dTop = fy + 44;
   prop(g, "desk_exec", ix + 162, dTop + 70);
   b.owner = { x: ix + 162, y: dTop + 34, clipY: dTop + 22, screen: { x: ix + 162 - 42 + 29, y: dTop + 23 } };
+  // the Analyst's permanent desk, beside the Owner (dual monitors, chair, plant, notebook)
+  {
+    const cx = ix + 78;
+    const dA = dTop + 23;
+    rect(g, cx - 31, dA + 16, 62, 2, P.SHADOW);
+    prop(g, "plant_a", cx - 44, dA + 30);
+    plaque(g, cx, dA + 34, "ANALYST");
+    const dk = ANALYST_KEY;
+    const node = b.node(ix + 115, fy + 128);
+    const seat = b.spot({ id: `seat:${dk}`, x: cx, y: dA + 11, node, via: [{ x: ix + 115, y: dA + 11 }], kind: "deskA", dir: "down", idle: false, clipY: dA + 3 });
+    b.desks.set(dk, { key: dk, project: null, role: "analyst", row: "A", cx, dA, seat, screens: [], backs: [{ x: cx - 16, y: dA - 1 }, { x: cx + 1, y: dA - 1 }], cards: { x: cx + 19, y: dA + 2 } });
+    b.analystNode = node;
+  }
   // lounge
   const sofaCx = ix + 82;
   const sofaTop = fy + 140;
@@ -701,16 +748,14 @@ function ownerOffice(b: Builder, x: number, y: number, door: "top" | "bottom"): 
   const hub2 = b.node(ix + 150, fy + 128);
   const hub3 = b.node(ix + 150, sofaTop + 31);
   b.chain([hub, hub2, hub3]);
+  if (b.analystNode !== null) b.link(b.analystNode, hub2);
   for (const lx of [30, 52, 74]) {
     const sx = sofaCx - 48 + lx;
     b.spot({ id: `couch:owner:${lx}`, x: sx, y: sofaTop + 31, node: hub3, via: [], kind: "couch", dir: "down", idle: true, clipY: sofaTop + 27 });
   }
   b.spot({ id: "owner:visit", x: ix + 262, y: fy + 104, node: hub, via: [], kind: "stand", dir: "left", idle: true, talk: true });
   // discussion seats: behind the desk beside the Owner (facing the viewer), then the couch
-  for (const [k, sx, side] of [
-    [0, ix + 196, ix + 222],
-    [1, ix + 128, ix + 102],
-  ] as const)
+  for (const [k, sx, side] of [[0, ix + 196, ix + 222]] as const)
     b.talkSeats.push(
       b.spot({ id: `owner:talk:${k}`, x: sx, y: dTop + 34, node: hub2, via: [{ x: side, y: fy + 128 }, { x: side, y: dTop + 34 }], kind: "talkDesk", dir: "down", idle: false, clipY: dTop + 22 }),
     );
@@ -1060,7 +1105,7 @@ export function buildWorld(office: Office, cols: number): World {
     prop(g, "plant_c", W - 20, cy + 30);
   }
 
-  const signature = JSON.stringify([cols, rooms.map((r) => [r.project, r.name, r.active, r.kind, (r.roles ?? []).join(","), r.workers.map((w) => w.role).sort()]), hq]);
+  const signature = JSON.stringify([cols, rooms.map((r) => [r.project, r.name, r.active, r.kind, r.phase, (r.roles ?? []).join(","), r.workers.map((w) => w.role).sort()]), hq]);
   return {
     W,
     H,

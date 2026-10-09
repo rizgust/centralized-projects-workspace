@@ -14,12 +14,13 @@ import { STATUS_LABEL, compact, duration, usd, totalTokens } from "../fmt";
 const STATE_LABEL: Record<Worker["state"], string> = {
   working: "Working",
   asking: "Asking you",
+  proposing: "Proposing",
   blocked: "Blocked",
   review: "Reviewing",
   waiting: "Waiting",
   idle: "Idle",
 };
-const STATE_SYM: Record<Worker["state"], string> = { working: "⌨", asking: "?", blocked: "!", review: "?", waiting: "≡", idle: "z" };
+const STATE_SYM: Record<Worker["state"], string> = { working: "⌨", asking: "?", proposing: "▤", blocked: "!", review: "?", waiting: "≡", idle: "z" };
 
 export function OfficePage() {
   const live = useLive();
@@ -47,13 +48,14 @@ export function OfficePage() {
       interactive: office?.interactiveSessions ?? 0,
       recent,
       openQuestions: live.questions.filter((q) => q.status === "open").length,
+      names: Object.fromEntries(live.projects.map((p) => [p.id, p.name])),
     }),
-    [system, usageToday, office?.interactiveSessions, recent, live.questions],
+    [system, usageToday, office?.interactiveSessions, recent, live.questions, live.projects],
   );
 
   if (!office) return <p className="muted">Loading the office…</p>;
   const { rooms, hq } = roomsOf(office);
-  const counts = rooms.flatMap((r) => r.workers).reduce<Record<string, number>>((a, w) => ((a[w.state] = (a[w.state] ?? 0) + 1), a), {});
+  const counts = [...rooms.flatMap((r) => r.workers), ...(office.analyst ? [office.analyst] : [])].reduce<Record<string, number>>((a, w) => ((a[w.state] = (a[w.state] ?? 0) + 1), a), {});
 
   return (
     <div className="office-page">
@@ -83,6 +85,7 @@ export function OfficePage() {
         prayer={live.prayer}
         onInbox={(id) => live.openInbox(id)}
         onTalk={() => live.openNewDiscussion({ role: "analyst", project: null })}
+        pmVisits={live.pmVisits}
       />
 
       {hq && (
@@ -96,7 +99,7 @@ export function OfficePage() {
       <details className="roster-panel">
         <summary>Team status by room</summary>
       <section className="roster" aria-label="Workers by room">
-        {rooms.map((r) => (
+        {[...(office.analyst ? [{ project: "owner", name: "Owner's office", active: false, workers: [office.analyst] }] : []), ...rooms].map((r) => (
           <div key={r.project || "hq"} className={`roster-room${r.active && !hq ? " active" : ""}`}>
             <h2 className="roster-title">
               {r.name}
@@ -104,13 +107,14 @@ export function OfficePage() {
             </h2>
             <ul>
               {r.workers.map((w) => {
-                const project = hq ? null : r.project;
+                const isAnalyst = r.project === "owner";
+                const project = hq && !isAnalyst ? null : r.project;
                 const key = stationKey(project, w.role);
                 return (
                   <li key={key}>
                     <button
                       className="worker-chip"
-                      onClick={() => setSel({ project, worker: w })}
+                      onClick={() => setSel({ project: isAnalyst ? (office.analyst?.project ?? null) : project, worker: w })}
                       onFocus={() => setFocusKey(key)}
                       onBlur={() => setFocusKey(null)}
                       onMouseEnter={() => setFocusKey(key)}
@@ -150,6 +154,7 @@ function WorkerDrawer({ sel, onClose }: { sel: StationRef | null; onClose: () =>
     if (!sel || !live.office) return sel?.worker ?? null;
     const { rooms, hq } = roomsOf(live.office);
     const room = hq ? rooms[0] : rooms.find((r) => r.project === project);
+    if (role === "analyst" && live.office.analyst) return live.office.analyst;
     return room?.workers.find((w) => w.role === role) ?? sel.worker;
   }, [sel, live.office, project, role]);
   const run = live.runs.find((r) => r.id === worker?.runId) ?? live.runs.find((r) => r.status === "running" && r.role === role && r.project === project) ?? null;
@@ -231,6 +236,31 @@ function WorkerDrawer({ sel, onClose }: { sel: StationRef | null; onClose: () =>
             )}
           </p>
           {info?.description && <p className="muted">{info.description}</p>}
+          {role === "analyst" && live.office?.analyst && (
+            <section>
+              <h3>Working with you in the Owner's office</h3>
+              <p className="muted small">One Analyst serves every project. Current focus: {live.office.analyst.project ? (live.projects.find((p) => p.id === live.office!.analyst!.project)?.name ?? live.office.analyst.project) : "workspace"}.</p>
+              {(live.office.analyst.busy ?? []).length === 0 ? (
+                <p className="muted small">No project is waiting on the Analyst.</p>
+              ) : (
+                <ul className="plain list-lines">
+                  {(live.office.analyst.busy ?? []).map((b) => (
+                    <li key={b.project} className="row-between">
+                      <span>
+                        <Link to={`/projects/${encodeURIComponent(b.project)}`} onClick={onClose}>
+                          {live.projects.find((p) => p.id === b.project)?.name ?? b.project}
+                        </Link>
+                        {b.bubble && b.bubble !== "zz" && <span className="muted small"> · {b.bubble}</span>}
+                      </span>
+                      <span className={`state-pill state-${b.state}`}>
+                        <span aria-hidden="true">{STATE_SYM[b.state]}</span> {STATE_LABEL[b.state]}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
 
           <section>
             <h3>Current run</h3>

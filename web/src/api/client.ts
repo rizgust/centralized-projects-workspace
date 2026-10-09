@@ -8,6 +8,13 @@ import type {
   Discussion,
   DiscussionSummary,
   NewDiscussionBody,
+  WorkflowView,
+  WorkflowLimits,
+  WorkflowReports,
+  Phase,
+  Delegation,
+  ReportFile,
+  Role,
   PatchTaskBody,
   ProjectDetail,
   ProjectSummary,
@@ -127,6 +134,25 @@ export const api = {
   questions: () => request<Question[]>("GET", "/api/questions"),
   answerQuestion: (id: string, b: { answer: string; resume?: boolean; override?: boolean }) =>
     request<{ question: Question; run: Run | null }>("POST", `/api/questions/${enc(id)}/answer`, b),
+  workflow: (p: string) => request<WorkflowView>("GET", `/api/projects/${enc(p)}/workflow`),
+  workflowSettings: (p: string, b: { limits?: Partial<WorkflowLimits>; reports?: Partial<WorkflowReports> }) =>
+    request<WorkflowView>("PATCH", `/api/projects/${enc(p)}/workflow/settings`, b),
+  setPhase: (p: string, phase: Phase, note?: string) => request<WorkflowView>("POST", `/api/projects/${enc(p)}/workflow/phase`, { phase, note }),
+  preparePlan: (p: string, comments?: string, override?: boolean) => request<{ run: Run }>("POST", `/api/projects/${enc(p)}/workflow/plan`, { comments, override: override || undefined }),
+  requestChanges: (p: string, comments: string, override?: boolean) =>
+    request<{ run: Run }>("POST", `/api/projects/${enc(p)}/workflow/request-changes`, { comments, override: override || undefined }),
+  approvePlan: (p: string, comment?: string, override?: boolean) =>
+    request<{ readied: number; run: Run | null; warning?: string }>("POST", `/api/projects/${enc(p)}/workflow/approve`, { comment, override: override || undefined }),
+  delegations: (p: string) => request<Delegation[]>("GET", `/api/projects/${enc(p)}/delegations`),
+  approveDelegation: (p: string, did: string, b: { tasks?: string[]; budgets?: Record<string, number>; comment?: string }) =>
+    request<Delegation>("POST", `/api/projects/${enc(p)}/delegations/${enc(did)}/approve`, b),
+  rejectDelegation: (p: string, did: string, comment?: string) => request<Delegation>("POST", `/api/projects/${enc(p)}/delegations/${enc(did)}/reject`, { comment }),
+  proposeDelegation: (p: string, override?: boolean) => request<Run>("POST", `/api/projects/${enc(p)}/delegations/propose`, { override: override || undefined }),
+  reports: (p: string, body = false) => request<ReportFile[]>("GET", `/api/projects/${enc(p)}/reports${body ? "?body=1" : ""}`),
+  requestReport: (p: string, note?: string, override?: boolean) => request<Run>("POST", `/api/projects/${enc(p)}/report`, { note, override: override || undefined }),
+  arrange: (p: string, role: Role, topic: string, override?: boolean) => request<{ run: Run }>("POST", `/api/projects/${enc(p)}/arrange`, { role, topic, override: override || undefined }),
+  getDoc: (p: string, path: string) => request<{ path: string; content: string; exists: boolean }>("GET", `/api/projects/${enc(p)}/docs/${path.split("/").map(enc).join("/")}`),
+  putDoc: (p: string, path: string, content: string) => request<{ path: string; content: string; exists: boolean }>("PUT", `/api/projects/${enc(p)}/docs/${path.split("/").map(enc).join("/")}`, { content }),
   kinds: () => request<KindInfo[]>("GET", "/api/kinds"),
   discussions: () => request<DiscussionSummary[]>("GET", "/api/discussions"),
   discussion: (id: string) => request<Discussion>("GET", `/api/discussions/${enc(id)}`),
@@ -144,7 +170,7 @@ export const api = {
 export type ConnStatus = "connecting" | "open" | "reconnecting";
 export type SseHandler = <K extends SseEventName>(name: K, data: SseEventMap[K]) => void;
 
-const SSE_EVENTS: SseEventName[] = ["system", "runs", "run-event", "workspace", "office", "usage", "prayer", "questions", "discussions"];
+const SSE_EVENTS: SseEventName[] = ["system", "runs", "run-event", "workspace", "office", "usage", "prayer", "questions", "discussions", "workflow"];
 
 /**
  * Opens `/api/events` and reconnects with exponential backoff (1 s → 30 s).

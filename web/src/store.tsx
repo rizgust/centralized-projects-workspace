@@ -16,12 +16,15 @@ import type {
   UsageRow,
   DiscussionSummary,
   KindInfo,
+  WorkflowView,
 } from "./api/types";
 
 export interface Toast {
   id: number;
   kind: "info" | "success" | "error";
   text: string;
+  /** optional link (hash route) shown as a button */
+  href?: string;
 }
 
 export interface NewDiscussionPrefill {
@@ -64,7 +67,12 @@ interface Live {
   tasksVersion: number;
   projectsVersion: number;
   toasts: Toast[];
-  toast: (text: string, kind?: Toast["kind"]) => void;
+  toast: (text: string, kind?: Toast["kind"], href?: string) => void;
+  /** project id -> workflow view (refetched on the SSE "workflow" event) */
+  workflows: Record<string, WorkflowView>;
+  refreshWorkflow: (project: string) => Promise<void>;
+  /** project id -> epoch ms until which the PM visits the Owner with a fresh report */
+  pmVisits: Record<string, number>;
   dismissToast: (id: number) => void;
   refreshProjects: () => Promise<void>;
   activate: (id: string | null) => Promise<void>;
@@ -117,11 +125,38 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const prevRuns = useRef(new Map<string, Run["status"]>());
   const toastId = useRef(0);
 
-  const toast = useCallback((text: string, kind: Toast["kind"] = "info") => {
+  const toast = useCallback((text: string, kind: Toast["kind"] = "info", href?: string) => {
     const id = ++toastId.current;
-    setToasts((t) => [...t.slice(-4), { id, kind, text }]);
-    window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 6000);
+    setToasts((t) => [...t.slice(-4), { id, kind, text, href }]);
+    window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), href ? 10000 : 6000);
   }, []);
+
+  const [workflows, setWorkflows] = useState<Record<string, WorkflowView>>({});
+  const [pmVisits, setPmVisits] = useState<Record<string, number>>({});
+  const wfSeen = useRef(new Map<string, { proposals: Set<string>; reports: Set<string> }>());
+  const refreshWorkflow = useCallback(
+    async (project: string) => {
+      try {
+        const w = await api.workflow(project);
+        const prev = wfSeen.current.get(project);
+        const proposals = new Set(w.delegations.filter((d) => d.status === "proposed").map((d) => d.id));
+        const reports = new Set(w.reports.map((r) => r.file));
+        if (prev) {
+          for (const id of proposals) if (!prev.proposals.has(id)) toast(`PM proposes a delegation for ${project}`, "info", `#/projects/${encodeURIComponent(project)}?tab=workflow&focus=approvals`);
+          for (const r of w.reports)
+            if (!prev.reports.has(r.file)) {
+              toast(`PM report: ${r.title}`, "info", `#/projects/${encodeURIComponent(project)}?tab=workflow&report=${encodeURIComponent(r.file)}`);
+              setPmVisits((v) => ({ ...v, [project]: Date.now() + 10_000 }));
+            }
+        }
+        wfSeen.current.set(project, { proposals, reports });
+        setWorkflows((m) => ({ ...m, [project]: w }));
+      } catch {
+        /* project without a workflow yet */
+      }
+    },
+    [toast],
+  );
   const dismissToast = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
 
   const on = useCallback(<K extends SseEventName>(name: K, fn: Listener<K>) => {
@@ -215,6 +250,11 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     };
   }, [trackRuns, setPrayer, setQuestions]);
 
+  const projectIds = projects.map((p) => p.id).join(",");
+  useEffect(() => {
+    for (const id of projectIds.split(",").filter(Boolean)) void refreshWorkflow(id);
+  }, [projectIds, refreshWorkflow]);
+
   // SSE.
   useEffect(() => {
     return openEvents((name, data) => {
@@ -252,6 +292,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         case "discussions":
           setDiscussions(data as DiscussionSummary[]);
           break;
+        case "workflow":
+          void refreshWorkflow((data as SseEventMap["workflow"]).project);
+          break;
         case "run-event":
           break;
       }
@@ -264,7 +307,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         void api.office().then(setOffice).catch(() => {});
       }
     });
-  }, [trackRuns, refreshProjects, setPrayer, setQuestions]);
+  }, [trackRuns, refreshProjects, setPrayer, setQuestions, refreshWorkflow]);
 
   const activate = useCallback(
     async (id: string | null) => {
@@ -307,6 +350,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       projectsVersion,
       toasts,
       toast,
+      workflows,
+      refreshWorkflow,
+      pmVisits,
       dismissToast,
       refreshProjects,
       activate,
@@ -318,7 +364,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       setRegisterOpen,
       error,
     }),
-    [conn, workspace, projects, activeProject, office, runs, system, sysPoints, usageToday, roles, prayer, questions, discussions, kinds, newDiscussion, inbox, tasksVersion, projectsVersion, toasts, toast, dismissToast, refreshProjects, activate, on, launch, registerOpen, error],
+    [conn, workspace, projects, activeProject, office, runs, system, sysPoints, usageToday, roles, prayer, questions, discussions, kinds, newDiscussion, inbox, tasksVersion, projectsVersion, toasts, toast, workflows, refreshWorkflow, pmVisits, dismissToast, refreshProjects, activate, on, launch, registerOpen, error],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

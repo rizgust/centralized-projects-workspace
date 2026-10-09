@@ -12,6 +12,11 @@ import type {
   DiscussionTurn,
   NewDiscussionBody,
   Role as RoleT,
+  Workflow,
+  WorkflowView,
+  Delegation,
+  ReportFile,
+  Phase,
   Overview,
   ProjectDetail,
   ProjectSummary,
@@ -389,6 +394,386 @@ function discussionRoute(method: string, id: string | undefined, action: string 
   throw new ApiError(`mock: no discussion route ${method} ${action}`, 404);
 }
 
+// ------------------------------------------------------------------ owner workflow
+interface WfState {
+  workflow: Workflow;
+  plan: string | null;
+  handover: string | null;
+  delegations: Delegation[];
+  reports: ReportFile[];
+}
+const H = 3_600_000;
+const defaultLimits = (): Workflow["limits"] => ({
+  maxParallel: 2,
+  dailyBudgetUsd: 15,
+  budgetPerWeight: 0.5,
+  maxTaskBudgetUsd: 4,
+  permissionMode: "acceptEdits",
+  pmBudgetUsd: 1,
+  analystBudgetUsd: 2,
+  model: "",
+});
+const defaultReports = (): Workflow["reports"] => ({ milestones: true, dailyAt: "17:00", everyHours: 0, onDemand: true });
+const hist = (...steps: [Phase, number, string, string?][]) => steps.map(([phase, ago, by, note]) => ({ phase, at: iso(START - ago * H), by, note }));
+const wfNew = (phase: Phase): WfState => ({
+  workflow: { phase, delegation: "propose", limits: defaultLimits(), reports: defaultReports(), planApprovedAt: null, history: hist([phase, 0, "owner"]) },
+  plan: null,
+  handover: null,
+  delegations: [],
+  reports: [],
+});
+const PLAN_MD = [
+  "# Plan: Pixel Quest prototype v0.2",
+  "",
+  "## Goal",
+  "A playable hex-grid run with inventory and one enemy type, good enough for playtest #4.",
+  "",
+  "## Milestones",
+  "1. **M1 Inventory**: drag & drop fixed, items persist across rooms",
+  "2. **M2 Enemy AI**: A* pathfinding on the hex grid, one chaser enemy",
+  "3. **M3 Playtest build**: Windows + Linux exports",
+  "",
+  "## Breakdown",
+  "| Task | Role | Weight |",
+  "|---|---|---|",
+  "| TASK-004 Inventory UI drag & drop | frontend | 3 |",
+  "| TASK-006 Enemy pathfinding | backend | 8 |",
+  "| TASK-007 Milestone M2 plan | project-manager | 2 |",
+  "",
+  "## Risks",
+  "- Pinned engine version has an input bug (TASK-004 is blocked on it)",
+  "- A* cost on large maps; cap the search radius",
+].join("\n");
+const HANDOVER_MD = [
+  "# Handover to the PM",
+  "",
+  "- Start with **TASK-004** once the engine bump lands; it unblocks M1.",
+  "- TASK-006 is the riskiest (weight 8). Pair the backend with a short spike first.",
+  "- Report after each milestone; the Owner wants a playtest build before Friday.",
+].join("\n");
+const REPORTS: ReportFile[] = [
+  {
+    file: "reports/2026-10-08-kickoff.md",
+    type: "kickoff",
+    at: iso(START - 26 * H),
+    title: "Kickoff: monthly reports & receipt parsing",
+    body: ["# Kickoff", "", "Plan approved with **46 weight points** across 15 tasks.", "", "- First wave: TASK-007 (frontend), TASK-008 (backend)", "- Daily budget $15, 2 parallel runs", "", "I'll report after each milestone and daily at 17:00."].join("\n"),
+  },
+  {
+    file: "reports/2026-10-08-daily.md",
+    type: "daily",
+    at: iso(START - 9 * H),
+    title: "Daily: 13/46 done, receipt endpoint mid-way",
+    body: ["# Daily report", "", "| | |", "|---|---|", "| Completed weight | 13 / 46 |", "| Spent today | $6.80 of $15 |", "| Running | 1 of 2 |", "", "**Blocked:** TASK-009 needs an Owner decision on the scheduler.", "", "**Next:** propose TASK-010/011/012 once TASK-007 is in review."].join("\n"),
+  },
+  {
+    file: "reports/2026-10-09-milestone.md",
+    type: "milestone",
+    at: iso(START - 2 * H),
+    title: "Milestone: expense capture (F-01) complete",
+    body: ["# Milestone reached: F-01 Expense capture", "", "All F-01 tasks are completed and verified by qa-tester.", "", "- TASK-002 summary card ✓", "- TASK-004 list view ✓", "- TASK-005 category picker in review", "", "> Next milestone: F-04 Monthly reports (TASK-007 running)."].join("\n"),
+  },
+];
+const wf: Record<string, WfState> = {
+  "atlas-web": {
+    workflow: {
+      phase: "execution",
+      delegation: "propose",
+      limits: defaultLimits(),
+      reports: defaultReports(),
+      planApprovedAt: iso(START - 26 * H),
+      history: hist(["intake", 96, "owner"], ["brainstorm", 80, "owner"], ["planning", 50, "owner", "Ask Analyst to prepare the plan"], ["review", 48, "analyst"], ["execution", 26, "owner", "Plan approved"]),
+    },
+    plan: PLAN_MD.replace(/Pixel Quest prototype v0.2/, "Atlas Web v1"),
+    handover: HANDOVER_MD,
+    delegations: [
+      {
+        id: "dlg-003",
+        createdAt: iso(START - 0.2 * H),
+        status: "proposed",
+        reason: "TASK-007 is close to review and the frontend has two small ready tasks; the UI/UX upgrade flow unblocks the Pro plan milestone.",
+        items: [
+          { task: "TASK-010", role: "frontend", budgetUsd: 0.5, permissionMode: "acceptEdits", note: "Empty states, weight 1", status: "proposed", runId: null, detail: "" },
+          { task: "TASK-011", role: "frontend", budgetUsd: 1, permissionMode: "acceptEdits", note: "Language toggle, weight 2", status: "proposed", runId: null, detail: "" },
+          { task: "TASK-012", role: "uiux", budgetUsd: 1.5, permissionMode: "acceptEdits", note: "Pro upgrade flow spec, weight 3", status: "proposed", runId: null, detail: "" },
+        ],
+        decidedAt: null,
+        comment: "",
+        path: "projects/atlas-web/delegations/dlg-003.yaml",
+      },
+      {
+        id: "dlg-002",
+        createdAt: iso(START - 8 * H),
+        status: "launched",
+        reason: "Second wave: credit counter and receipt endpoint.",
+        items: [
+          { task: "TASK-006", role: "backend", budgetUsd: 1.5, permissionMode: "acceptEdits", note: "", status: "done", runId: "run-5b21", detail: "succeeded, $1.42" },
+          { task: "TASK-008", role: "backend", budgetUsd: 4, permissionMode: "acceptEdits", note: "", status: "queued", runId: null, detail: "waiting for a free slot" },
+        ],
+        decidedAt: iso(START - 7.8 * H),
+        comment: "",
+        path: "projects/atlas-web/delegations/dlg-002.yaml",
+      },
+      {
+        id: "dlg-001",
+        createdAt: iso(START - 25 * H),
+        status: "launched",
+        reason: "Kickoff wave.",
+        items: [
+          { task: "TASK-007", role: "frontend", budgetUsd: 2, permissionMode: "acceptEdits", note: "", status: "launched", runId: "run-7f3a", detail: "running" },
+          { task: "TASK-009", role: "infra", budgetUsd: 1.5, permissionMode: "acceptEdits", note: "", status: "skipped", runId: null, detail: "Owner unchecked" },
+        ],
+        decidedAt: iso(START - 24.5 * H),
+        comment: "Skip the cron until we pick a scheduler.",
+        path: "projects/atlas-web/delegations/dlg-001.yaml",
+      },
+    ],
+    reports: REPORTS,
+  },
+  "pixel-quest": {
+    workflow: {
+      phase: "review",
+      delegation: "propose",
+      limits: defaultLimits(),
+      reports: defaultReports(),
+      planApprovedAt: null,
+      history: hist(["intake", 30, "owner"], ["brainstorm", 28, "owner"], ["planning", 3, "owner", "Ask Analyst to prepare the plan"], ["review", 2.5, "analyst"]),
+    },
+    plan: PLAN_MD,
+    handover: HANDOVER_MD,
+    delegations: [],
+    reports: [],
+  },
+  "vendor-research": {
+    workflow: {
+      phase: "brainstorm",
+      delegation: "propose",
+      limits: defaultLimits(),
+      reports: defaultReports(),
+      planApprovedAt: null,
+      history: hist(["intake", 50, "owner"], ["brainstorm", 20, "owner"]),
+    },
+    plan: null,
+    handover: null,
+    delegations: [],
+    reports: [],
+  },
+};
+// review fixture: one Owner-adjusted weight, one not-ready backlog task
+{
+  const t6 = db.tasks.find((t) => t.project === "pixel-quest" && t.id === "TASK-006");
+  if (t6) {
+    t6.proposedWeight = 5;
+    t6.weight = 8;
+    t6.status = "backlog";
+    t6.notes.push("2026-10-09 review: Owner adjusted weight 5 → 8");
+  }
+  const t7 = db.tasks.find((t) => t.project === "pixel-quest" && t.id === "TASK-007");
+  if (t7) {
+    t7.acceptance_criteria = [];
+    t7.weight = null;
+  }
+  const t4 = db.tasks.find((t) => t.project === "pixel-quest" && t.id === "TASK-004");
+  if (t4) t4.status = "backlog";
+}
+const docs = new Map<string, string>();
+const wfOf = (p: string): WfState => (wf[p] ??= wfNew("intake"));
+const missingOf = (t: Task) => {
+  const m: string[] = [];
+  if (t.weight === null) m.push("weight");
+  if (!t.description.trim()) m.push("description");
+  if (!t.requirements.length) m.push("requirements");
+  if (!t.acceptance_criteria.length) m.push("acceptance_criteria");
+  return m;
+};
+function wfView(p: string): WorkflowView {
+  const s = wfOf(p);
+  const tasks = db.tasks.filter((t) => t.project === p && t.status !== "cancelled");
+  const weightByRole: Record<string, number> = {};
+  for (const t of tasks) weightByRole[t.owner] = (weightByRole[t.owner] ?? 0) + (t.weight ?? 0);
+  const today = new Date().toDateString();
+  return {
+    project: p,
+    workflow: s.workflow,
+    plan: s.plan,
+    handover: s.handover,
+    tasks: tasks.length,
+    totalWeight: tasks.reduce((a, t) => a + (t.weight ?? 0), 0),
+    weightByRole,
+    adjusted: tasks.filter((t) => t.proposedWeight != null && t.proposedWeight !== t.weight).map((t) => ({ task: t.id, title: t.title, from: t.proposedWeight!, to: t.weight ?? 0 })),
+    notReady: tasks.filter((t) => t.status === "backlog" && missingOf(t).length).map((t) => ({ task: t.id, title: t.title, missing: missingOf(t) })),
+    delegations: s.delegations,
+    spentToday: Math.round(db.runs.filter((r) => r.project === p && new Date(r.startedAt).toDateString() === today).reduce((a, r) => a + (r.costUsd ?? 0.6), 0) * 100) / 100,
+    runningWork: db.runs.filter((r) => r.project === p && r.status === "running" && (r.purpose ?? "work") === "work").length,
+    pmBusy: db.runs.some((r) => r.project === p && r.status === "running" && r.role === "project-manager"),
+    lastReportAt: s.reports[0]?.at ?? null,
+    reports: s.reports.map(({ body: _b, ...r }) => r),
+  };
+}
+const emitWf = (p: string) => emit("workflow", { project: p });
+const setPhase = (p: string, phase: Phase, by: string, note?: string) => {
+  const s = wfOf(p);
+  s.workflow.phase = phase;
+  s.workflow.history.push({ phase, at: iso(now()), by, note });
+};
+function wfRun(p: string, role: RoleT, purpose: NonNullable<Run["purpose"]>, prompt: string, ms: number, done: () => void): Run {
+  const run = route("POST", ["runs"], new URLSearchParams(), { project: p, role, prompt, permissionMode: "acceptEdits", budgetUsd: 2, override: true }) as Run;
+  run.id = run.id.replace("run-ui", "run-wf");
+  db.events.set(run.id, db.events.get(run.id) ?? []);
+  run.purpose = purpose;
+  setTimeout(() => {
+    if (run.status === "running") finishRun(run, "succeeded");
+    done();
+    emitWf(p);
+    emitOffice();
+  }, ms);
+  emitRuns();
+  return run;
+}
+function holdCheck(override: unknown) {
+  if (prayerState.active && !override) {
+    const n = prayerState.active.name;
+    throw new ApiError(`Sholat ${n.charAt(0).toUpperCase() + n.slice(1)} in progress; held until ${hhmm(Date.parse(prayerState.active.endsAt))}`, 423);
+  }
+}
+
+function workflowRoute(method: string, p: string, parts: string[], B: Record<string, unknown>): unknown {
+  const [c, d, e] = parts;
+  const s = wfOf(p);
+  if (c === "docs") {
+    const path = parts.slice(1).join("/");
+    if (!path.endsWith(".md")) throw new ApiError("only .md files inside the project folder", 400);
+    const key = `${p}/${path}`;
+    if (method === "PUT") {
+      docs.set(key, String(B.content ?? ""));
+      emitWf(p);
+      return { path, content: docs.get(key), exists: true };
+    }
+    const seed = db.projects.find((x) => x.id === p);
+    const def = path === "brief.md" || path === "requirements/product.md" ? (seed?.projectMd ?? "") : "";
+    return { path, content: docs.get(key) ?? def, exists: docs.has(key) || !!def };
+  }
+  if (c === "workflow") {
+    if (method === "GET" && !d) return wfView(p);
+    if (method === "PATCH" && d === "settings") {
+      Object.assign(s.workflow.limits, (B.limits as object) ?? {});
+      Object.assign(s.workflow.reports, (B.reports as object) ?? {});
+      emitWf(p);
+      return wfView(p);
+    }
+    if (method === "POST" && d === "phase") {
+      setPhase(p, B.phase as Phase, "owner", B.note as string | undefined);
+      emitWf(p);
+      emitOffice();
+      return wfView(p);
+    }
+    if (method === "POST" && (d === "plan" || d === "request-changes")) {
+      holdCheck(B.override);
+      setPhase(p, "planning", "owner", (B.comments as string) || (d === "plan" ? "Prepare the plan" : "Changes requested"));
+      const run = wfRun(p, "analyst", d === "plan" ? "plan" : "revise", String(B.comments ?? "Prepare the development package"), 9000, () => {
+        s.plan = s.plan ?? PLAN_MD.replace("Pixel Quest prototype v0.2", p);
+        s.handover = s.handover ?? HANDOVER_MD;
+        setPhase(p, "review", "analyst");
+      });
+      emitWf(p);
+      return { run };
+    }
+    if (method === "POST" && d === "approve") {
+      holdCheck(B.override);
+      const v = wfView(p);
+      let readied = 0;
+      for (const t of db.tasks.filter((t) => t.project === p && t.status === "backlog" && !missingOf(t).length)) {
+        t.status = "ready";
+        readied++;
+      }
+      setPhase(p, "execution", "owner", (B.comment as string) || "Plan approved");
+      s.workflow.planApprovedAt = iso(now());
+      const run = wfRun(p, "project-manager", "kickoff", "Kickoff", 5000, () => {
+        s.reports.unshift({ file: `reports/${new Date().toISOString().slice(0, 10)}-kickoff.md`, type: "kickoff", at: iso(now()), title: "Kickoff: plan approved", body: `# Kickoff\n\n${readied} tasks are ready. I'll propose the first wave shortly.` });
+      });
+      emit("workspace", { changed: ["tasks"] });
+      emitWf(p);
+      return { readied, run, warning: v.notReady.length ? `${v.notReady.length} task(s) stay in backlog: missing fields (${v.notReady.map((n) => n.task).join(", ")})` : undefined };
+    }
+  }
+  if (c === "delegations") {
+    if (method === "GET" && !d) return s.delegations;
+    if (method === "POST" && d === "propose") {
+      holdCheck(B.override);
+      return wfRun(p, "project-manager", "delegate", "Propose the next wave", 5000, () => {
+        const ready = db.tasks.filter((t) => t.project === p && t.status === "ready").slice(0, 3);
+        if (!ready.length) return;
+        s.delegations.unshift({
+          id: `dlg-${String(s.delegations.length + 1).padStart(3, "0")}`,
+          createdAt: iso(now()),
+          status: "proposed",
+          reason: "Ready tasks with free capacity.",
+          items: ready.map((t) => ({ task: t.id, role: t.owner as RoleT, budgetUsd: Math.min(4, (t.weight ?? 1) * 0.5), permissionMode: "acceptEdits", note: `weight ${t.weight ?? "?"}`, status: "proposed" as const, runId: null, detail: "" })),
+          decidedAt: null,
+          comment: "",
+          path: "",
+        });
+      });
+    }
+    const dl = s.delegations.find((x) => x.id === d);
+    if (!dl) throw new ApiError(`delegation ${d} not found`, 404);
+    if (method === "POST" && e === "reject") {
+      dl.status = "rejected";
+      dl.decidedAt = iso(now());
+      dl.comment = String(B.comment ?? "");
+      dl.items.forEach((it) => (it.status = "skipped"));
+      emitWf(p);
+      emitOffice();
+      return dl;
+    }
+    if (method === "POST" && e === "approve") {
+      const pick = (B.tasks as string[] | undefined) ?? dl.items.map((i) => i.task);
+      const budgets = (B.budgets as Record<string, number> | undefined) ?? {};
+      dl.status = "launched";
+      dl.decidedAt = iso(now());
+      dl.comment = String(B.comment ?? "");
+      for (const it of dl.items) {
+        if (!pick.includes(it.task)) {
+          it.status = "skipped";
+          it.detail = "Owner unchecked";
+          continue;
+        }
+        it.budgetUsd = budgets[it.task] ?? it.budgetUsd;
+        try {
+          const run = route("POST", ["runs"], new URLSearchParams(), { project: p, role: it.role, taskId: it.task, prompt: `Work on ${it.task}`, permissionMode: "acceptEdits", budgetUsd: it.budgetUsd, override: true }) as Run;
+          run.purpose = "work";
+          it.status = "launched";
+          it.runId = run.id;
+          it.detail = "running";
+        } catch (err) {
+          it.status = "queued";
+          it.detail = err instanceof Error ? err.message : "queued";
+        }
+      }
+      emitWf(p);
+      emitOffice();
+      return dl;
+    }
+  }
+  if (c === "reports" && method === "GET") return s.reports.map((r) => (B.__body ? r : { ...r, body: undefined }));
+  if (c === "report" && method === "POST") {
+    holdCheck(B.override);
+    return wfRun(p, "project-manager", "report", String(B.note ?? "Progress report"), 4500, () => {
+      s.reports.unshift({ file: `reports/${new Date().toISOString().slice(0, 10)}-on-demand-${s.reports.length}.md`, type: "on-demand", at: iso(now()), title: B.note ? `On demand: ${String(B.note).slice(0, 40)}` : "On-demand progress report", body: `# Progress\n\nAsked: ${B.note ?? "general update"}\n\n- 13 of 46 weight done\n- TASK-007 nearly in review\n- Next proposal after the current wave` });
+    });
+  }
+  if (c === "arrange" && method === "POST") {
+    holdCheck(B.override);
+    const role = B.role as RoleT;
+    const topic = String(B.topic ?? "");
+    const run = wfRun(p, "project-manager", "arrange", `Brief ${role} on: ${topic}`, 4000, () => {
+      discussionRoute("POST", undefined, undefined, { topic, project: p, role, message: `Briefing from the PM: the Owner wants to discuss "${topic}". Context: ${p} is in execution.`, override: true });
+    });
+    return { run };
+  }
+  throw new ApiError(`mock: no workflow route ${method} ${parts.join("/")}`, 404);
+}
+
 // ------------------------------------------------------------------ prayer fixture
 // Times are relative to "now": the next adhan is ~4 minutes away. `?sholat=now` opens a
 // window immediately for demos.
@@ -445,6 +830,20 @@ function prayer(): PrayerStatus {
     active: prayerState.active,
   };
 }
+
+if (db.runs.length) db.runs.unshift({
+  ...db.runs[0],
+  id: "run-an01",
+  project: "vendor-research",
+  role: "analyst",
+  taskId: "TASK-003",
+  prompt: "Compare fees and payout times for the shortlisted providers.",
+  sessionId: "c0ffee04-an01",
+  pid: 22610,
+  tokens: { input: 9_100, output: 3_200, cacheRead: 120_000, cacheWrite: 14_000 },
+  numTurns: 6,
+  lastText: "WebSearch",
+});
 
 // Pre-fill events for every seeded run.
 for (const run of db.runs) {
@@ -532,6 +931,8 @@ function workerFor(project: string | null, role: Role): Worker {
     const task = run.taskId ? db.tasks.find((t) => t.project === project && t.id === run.taskId) : undefined;
     return { ...base, state: "working", runId: run.id, taskId: run.taskId, taskTitle: task?.title ?? null, bubble: run.lastText.slice(0, 12) };
   }
+  if (role === "project-manager" && wfOf(project).delegations.some((d) => d.status === "proposed"))
+    return { ...base, state: "proposing", bubble: "DLG", taskId: null, taskTitle: "Delegation proposal waiting for approval" };
   const q = questions.find((x) => x.status === "open" && x.project === project && x.from === role);
   if (q) return { ...base, state: "asking", questionId: q.id, question: q.question, taskId: q.task, taskTitle: db.tasks.find((t) => t.project === project && t.id === q.task)?.title ?? null, bubble: "?" };
   if (ov && ov.until > now()) {
@@ -547,6 +948,46 @@ function workerFor(project: string | null, role: Role): Worker {
   return base;
 }
 
+// ---- the one workspace Analyst (Office.analyst). Mock cycles its mode every 15 s;
+// `?analyst=work|talk|ask|review` pins one for screenshots.
+const ANALYST_MODES = ["work", "talk", "ask", "review"] as const;
+type AnalystMode = (typeof ANALYST_MODES)[number];
+const pinnedAnalyst = new URLSearchParams(window.location.search).get("analyst") as AnalystMode | null;
+const analystMode = (): AnalystMode => pinnedAnalyst ?? ANALYST_MODES[Math.floor((now() - START) / 15_000) % ANALYST_MODES.length];
+const PRIORITY: WorkerState[] = ["working", "asking", "blocked", "review", "waiting", "idle"];
+function analystWorker(): Office["analyst"] {
+  // no projects (HQ): the Analyst sits with the Owner, idle
+  if (!db.projects.length) return { ...workerFor(null, "analyst"), project: null, busy: [] };
+  const mode = analystMode();
+  const busy = db.projects
+    .map((p) => {
+      const w = workerFor(p.id, "analyst");
+      return { project: p.id, state: w.state, bubble: w.bubble, w };
+    })
+    .filter((b) => b.state !== "idle");
+  // the seeded analyst run makes vendor-research "working"; the mode overlays the rest
+  const work = busy.find((b) => b.state === "working") ?? { project: "vendor-research", state: "working" as WorkerState, bubble: "WebSearch", w: workerFor("vendor-research", "analyst") };
+  if (!busy.some((b) => b.project === work.project)) busy.unshift(work);
+  if (mode === "ask") {
+    const b = busy.find((x) => x.project === "pixel-quest");
+    if (b) Object.assign(b, { state: "asking", bubble: "?" });
+    else busy.push({ project: "pixel-quest", state: "asking", bubble: "?", w: workerFor("pixel-quest", "analyst") });
+  }
+  if (mode === "review" && !busy.some((b) => b.state === "review")) busy.push({ project: "pixel-quest", state: "review", bubble: "TASK-005", w: workerFor("pixel-quest", "analyst") });
+  const order = mode === "work" || mode === "talk" ? busy : [...busy].sort((a, b) => PRIORITY.indexOf(a.state) - PRIORITY.indexOf(b.state));
+  const top =
+    mode === "ask" ? order.find((b) => b.state === "asking")! : mode === "review" ? order.find((b) => b.state === "review")! : order.find((b) => b.state === "working") ?? order[0];
+  const base = workerFor(top.project, "analyst");
+  return {
+    ...base,
+    state: top.state,
+    bubble: top.state === "working" ? top.bubble || "WebSearch" : top.bubble,
+    question: top.state === "asking" ? "Should the A* search radius be capped at 12 hexes for v0.2?" : base.question,
+    project: top.project,
+    busy: busy.map(({ project, state, bubble }) => ({ project, state, bubble })),
+  };
+}
+
 function office(): Office {
   const rooms: OfficeRoom[] = db.projects.map((p) => ({
     project: p.id,
@@ -554,9 +995,14 @@ function office(): Office {
     active: db.active === p.id,
     kind: p.kind,
     roles: rolesOf(p),
-    workers: rolesOf(p).map((r) => workerFor(p.id, r)),
+    phase: wfOf(p.id).workflow.phase,
+    pendingDelegations: wfOf(p.id).delegations.filter((d) => d.status === "proposed").length,
+    workers: rolesOf(p)
+      .filter((r) => r !== "analyst")
+      .map((r) => workerFor(p.id, r)),
   }));
-  return { project: db.active, rooms, hq: ROLES.map((r) => workerFor(null, r)), interactiveSessions: db.interactive, openQuestions: questions.filter((q) => q.status === "open").length, discussions: discussions.filter((d) => d.status === "open").map((d) => ({ id: d.id, role: d.role, project: d.project, topic: d.topic, running: d.running })) };
+  const talking = analystMode() === "talk";
+  return { project: db.active, rooms, hq: ROLES.filter((r) => r !== "analyst").map((r) => workerFor(null, r)), analyst: analystWorker(), interactiveSessions: db.interactive, openQuestions: questions.filter((q) => q.status === "open").length, discussions: discussions.filter((d) => d.status === "open" && (d.running || (talking && d.role === "analyst") || d.role !== "analyst")).map((d) => ({ id: d.id, role: d.role, project: d.project, topic: d.topic, running: d.running })) };
 }
 
 function addRow(a: UsageRow, b: UsageRow): UsageRow {
@@ -742,6 +1188,8 @@ function startSimulation() {
     emitOffice();
   }, 3500);
 
+  setInterval(emitOffice, 15_000);
+
   // Prayer windows open at the adhan and close windowMin later.
   setInterval(() => {
     const t = now();
@@ -883,6 +1331,7 @@ function route(method: string, p: string[], q: URLSearchParams, body: unknown): 
         currentReportMd: "",
       };
       db.projects.push(seed);
+      wf[seed.id] = wfNew("intake");
       emit("workspace", { changed: ["projects"] });
       emitOffice();
       return summary(seed);
@@ -901,6 +1350,8 @@ function route(method: string, p: string[], q: URLSearchParams, body: unknown): 
       emitOffice();
       return summary(proj);
     }
+    if (c === "workflow" || c === "delegations" || c === "reports" || c === "report" || c === "arrange" || c === "docs")
+      return workflowRoute(method, proj.id, p.slice(2), c === "reports" && q.get("body") === "1" ? { ...B, __body: true } : B);
     if (c === "tasks") {
       if (method === "GET" && !d) return db.tasks.filter((t) => t.project === proj.id).sort((x, y) => x.id.localeCompare(y.id));
       if (method === "POST" && !d) {
@@ -936,6 +1387,12 @@ function route(method: string, p: string[], q: URLSearchParams, body: unknown): 
         const task = db.tasks.find((t) => t.project === proj.id && t.id === d);
         if (!task) throw new ApiError(`task ${d} not found`, 404);
         const { addNote, ...rest } = B as Partial<Task> & { addNote?: string };
+        if (rest.weight !== undefined && rest.weight !== task.weight && wfOf(proj.id).workflow.phase === "review") {
+          if (task.proposedWeight == null) task.proposedWeight = task.weight;
+          task.notes.push(`${new Date().toISOString().slice(0, 10)} review: Owner adjusted weight ${task.weight ?? "?"} → ${rest.weight}`);
+          if (rest.weight === task.proposedWeight) task.proposedWeight = null;
+          setTimeout(() => emitWf(proj.id), 0);
+        }
         Object.assign(task, rest);
         if (addNote) task.notes.push(`${new Date().toISOString().slice(0, 10)} ${addNote}`);
         emit("workspace", { changed: ["tasks"] });

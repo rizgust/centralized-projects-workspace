@@ -52,7 +52,8 @@ export function App() {
   const live = useLive();
   const [theme, toggleTheme] = useTheme();
   const running = live.runs.filter((r) => r.status === "running").length;
-  const openQ = live.questions.filter((q) => q.status === "open").length;
+  const pendingDlg = Object.values(live.workflows).reduce((a, w) => a + w.delegations.filter((d) => d.status === "proposed").length, 0);
+  const openQ = live.questions.filter((q) => q.status === "open").length + pendingDlg;
 
   return (
     <div className="shell">
@@ -101,13 +102,14 @@ export function App() {
               {live.projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
+                  {live.workflows[p.id] ? ` · ${live.workflows[p.id].workflow.phase}` : ""}
                 </option>
               ))}
             </select>
           </label>
           <div className="top-right">
             {openQ > 0 && (
-              <button className="inbox-pill" onClick={() => live.openInbox()} aria-label={`Owner inbox, ${openQ} open questions`}>
+              <button className="inbox-pill" onClick={() => live.openInbox()} aria-label={`Owner inbox, ${openQ} items (questions and approvals)`}>
                 <span aria-hidden="true">?</span> Inbox ({openQ})
               </button>
             )}

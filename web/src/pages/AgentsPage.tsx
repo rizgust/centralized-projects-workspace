@@ -17,7 +17,7 @@ export function useNow(ms = 1000) {
   return now;
 }
 
-const STATE_SYM: Record<Worker["state"], string> = { working: "⌨", asking: "?", blocked: "!", review: "?", waiting: "≡", idle: "z" };
+const STATE_SYM: Record<Worker["state"], string> = { working: "⌨", asking: "?", proposing: "▤", blocked: "!", review: "?", waiting: "≡", idle: "z" };
 
 export function AgentsPage() {
   const [params, setParams] = useSearchParams();
@@ -59,9 +59,10 @@ function RoleCards() {
     if (!live.office) return m;
     const rooms = live.office.rooms.length ? live.office.rooms : [{ name: "HQ", project: "", active: true, workers: live.office.hq }];
     for (const r of rooms) for (const w of r.workers) m.set(w.role, [...(m.get(w.role) ?? []), { worker: w, room: r.name }]);
+    if (live.office.analyst) m.set("analyst", [{ worker: live.office.analyst, room: "the Owner's office" }]);
     return m;
   }, [live.office]);
-  const rank: Record<Worker["state"], number> = { working: 0, asking: 1, blocked: 2, review: 3, waiting: 4, idle: 5 };
+  const rank: Record<Worker["state"], number> = { working: 0, asking: 1, proposing: 1, blocked: 2, review: 3, waiting: 4, idle: 5 };
 
   return (
     <div className="role-grid">
@@ -96,6 +97,20 @@ function RoleCards() {
                   <span className="muted">No current task</span>
                 )}
               </p>
+              {role === "analyst" && live.office?.analyst && (
+                <p className="small">
+                  In the Owner's office
+                  {(live.office.analyst.busy ?? []).length > 0 && (
+                    <span className="muted">
+                      {" "}
+                      · busy on{" "}
+                      {(live.office.analyst.busy ?? [])
+                        .map((b) => `${live.projects.find((p) => p.id === b.project)?.name ?? b.project} (${b.state})`)
+                        .join(", ")}
+                    </span>
+                  )}
+                </p>
+              )}
               <p className="small muted">
                 {runsToday.length} run{runsToday.length === 1 ? "" : "s"} today{runningNow ? ` (${runningNow} running)` : ""} · {usd(cost)} today
               </p>

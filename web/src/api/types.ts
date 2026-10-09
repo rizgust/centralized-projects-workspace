@@ -71,6 +71,80 @@ export interface Task {
   notes: string[];
   git: { branch: string | null; commit: string | null };
   worktree: { required: boolean; path: string | null };
+  /** the Analyst's original weight when the Owner adjusted it in review */
+  proposedWeight?: number | null;
+}
+
+// ---- Owner workflow ----
+export type Phase = "intake" | "brainstorm" | "planning" | "review" | "execution" | "done";
+export const PHASES: Phase[] = ["intake", "brainstorm", "planning", "review", "execution", "done"];
+export interface WorkflowLimits {
+  maxParallel: number;
+  dailyBudgetUsd: number;
+  budgetPerWeight: number;
+  maxTaskBudgetUsd: number;
+  permissionMode: PermissionMode;
+  pmBudgetUsd: number;
+  analystBudgetUsd: number;
+  model: string;
+}
+export interface WorkflowReports {
+  milestones: boolean;
+  dailyAt: string;
+  everyHours: number;
+  onDemand: boolean;
+}
+export interface Workflow {
+  phase: Phase;
+  delegation: "propose";
+  limits: WorkflowLimits;
+  reports: WorkflowReports;
+  planApprovedAt: string | null;
+  history: { phase: Phase; at: string; by: string; note?: string }[];
+}
+export interface DelegationItem {
+  task: string;
+  role: Role;
+  budgetUsd: number;
+  permissionMode: string;
+  note: string;
+  status: "proposed" | "queued" | "launched" | "done" | "failed" | "skipped";
+  runId: string | null;
+  detail: string;
+}
+export interface Delegation {
+  id: string;
+  createdAt: string;
+  status: "proposed" | "approved" | "rejected" | "launched";
+  reason: string;
+  items: DelegationItem[];
+  decidedAt: string | null;
+  comment: string;
+  path: string;
+}
+export interface ReportFile {
+  file: string;
+  type: "kickoff" | "milestone" | "daily" | "progress" | "on-demand" | "final" | "report";
+  at: string;
+  title: string;
+  body?: string;
+}
+export interface WorkflowView {
+  project: string;
+  workflow: Workflow;
+  plan: string | null;
+  handover: string | null;
+  tasks: number;
+  totalWeight: number;
+  weightByRole: Record<string, number>;
+  adjusted: { task: string; title: string; from: number; to: number }[];
+  notReady: { task: string; title: string; missing: string[] }[];
+  delegations: Delegation[];
+  spentToday: number;
+  runningWork: number;
+  pmBusy: boolean;
+  lastReportAt: string | null;
+  reports: ReportFile[];
 }
 
 export interface RoleInfo {
@@ -115,6 +189,7 @@ export interface Run {
   /** the owner question this run continues from */
   questionId?: string | null;
   discussionId?: string | null;
+  purpose?: "work" | "discussion" | "plan" | "revise" | "kickoff" | "delegate" | "report" | "arrange";
 }
 
 export type RunEventKind = "system" | "assistant_text" | "tool_use" | "tool_result" | "result" | "stderr";
@@ -127,7 +202,7 @@ export interface RunEvent {
   tool?: string;
 }
 
-export type WorkerState = "working" | "asking" | "blocked" | "review" | "waiting" | "idle";
+export type WorkerState = "working" | "asking" | "proposing" | "blocked" | "review" | "waiting" | "idle";
 
 export interface Worker {
   role: Role;
@@ -150,6 +225,8 @@ export interface OfficeRoom {
   workers: Worker[];
   kind?: string;
   roles?: Role[];
+  phase?: Phase;
+  pendingDelegations?: number;
 }
 
 export interface Office {
@@ -159,6 +236,15 @@ export interface Office {
   interactiveSessions: number;
   openQuestions?: number;
   discussions?: { id: string; role: Role; project: string | null; topic: string; running: string | null }[];
+  /** The ONE workspace Analyst, seated in the Owner's office (never in rooms or hq). */
+  analyst?: AnalystWorker;
+}
+
+export interface AnalystWorker extends Worker {
+  /** project the state refers to */
+  project: string | null;
+  /** every project with demand on the Analyst */
+  busy?: { project: string; state: WorkerState; bubble: string }[];
 }
 
 export interface DiscussionTurn {
@@ -364,6 +450,7 @@ export interface SseEventMap {
   prayer: PrayerStatus;
   questions: Question[];
   discussions: DiscussionSummary[];
+  workflow: { project: string };
 }
 
 export type SseEventName = keyof SseEventMap;

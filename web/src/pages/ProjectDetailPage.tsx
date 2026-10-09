@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { PhaseBadge, WorkflowPanel } from "./WorkflowPanel";
 import { api } from "../api/client";
 import type { ProjectDetail } from "../api/types";
 import { useLive } from "../store";
@@ -13,6 +14,9 @@ export function ProjectDetailPage() {
   const [p, setP] = useState<ProjectDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("status");
+  const [params, setParams] = useSearchParams();
+  const view = (params.get("tab") as "workflow" | "docs") ?? "workflow";
+  const phase = live.workflows[id]?.workflow.phase;
 
   useEffect(() => {
     let cancelled = false;
@@ -36,7 +40,7 @@ export function ProjectDetailPage() {
       <div className="page-head">
         <div>
           <h1 className="pixel-title">
-            {p.name} {p.active && <span className="badge badge-active">Active</span>} <KindBadge kind={p.kind} />
+            {p.name} {p.active && <span className="badge badge-active">Active</span>} <KindBadge kind={p.kind} /> <PhaseBadge phase={phase} />
           </h1>
           <p className="muted">
             {p.id} · {p.type} · {p.classification} ·{" "}
@@ -63,6 +67,16 @@ export function ProjectDetailPage() {
         </div>
       </div>
 
+      <Tabs
+        label="Project views"
+        value={view}
+        onChange={(v) => setParams(v === "workflow" ? {} : { tab: v })}
+        items={[
+          { id: "workflow", label: "Workflow" },
+          { id: "docs", label: "Documents & status" },
+        ]}
+      />
+      {view === "workflow" ? <WorkflowPanel p={p} /> : (
       <div className="detail-grid">
         <div className="card">
           <Tabs
@@ -130,6 +144,7 @@ export function ProjectDetailPage() {
           </div>
         </aside>
       </div>
+      )}
     </div>
   );
 }

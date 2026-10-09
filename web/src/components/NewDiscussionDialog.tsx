@@ -5,6 +5,7 @@ import type { Role } from "../api/types";
 import { ROLES } from "../api/types";
 import { ROLE_FULL, useLive } from "../store";
 import { Dialog, Field } from "./ui";
+import { ArrangeDialog } from "../pages/WorkflowPanel";
 
 export function NewDiscussionDialog() {
   const live = useLive();
@@ -20,6 +21,8 @@ export function NewDiscussionDialog() {
   const [err, setErr] = useState<string | null>(null);
   const [held, setHeld] = useState<string | null>(null);
   const [override, setOverride] = useState(false);
+  const [arrange, setArrange] = useState(false);
+  const inExecution = !!scope && role !== "analyst" && live.workflows[scope]?.workflow.phase === "execution";
 
   useEffect(() => {
     if (!pre) return;
@@ -115,6 +118,14 @@ export function NewDiscussionDialog() {
         <Field label="First message (optional)" span hint="Read-only (plan mode): the role reads and thinks, it doesn't change files.">
           <textarea rows={4} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="What would you like to explore?" />
         </Field>
+        {inExecution && (
+          <div className="info-note span-2" role="note">
+            <strong>{ROLE_FULL[role]}</strong> is working on {live.projects.find((p) => p.id === scope)?.name ?? scope}, which is in execution. During execution the PM arranges talks with the team: the PM briefs the {ROLE_FULL[role]} first, then the discussion opens.{" "}
+            <button type="button" className="btn btn-sm btn-primary" onClick={() => setArrange(true)}>
+              Ask PM to arrange
+            </button>
+          </div>
+        )}
         {(hold || held) && (
           <div className="info-box span-2" role="status">
             <strong>{hold ? `Sholat ${hold.name.charAt(0).toUpperCase() + hold.name.slice(1)} berjamaah` : "Sholat in progress"}</strong>
@@ -126,6 +137,18 @@ export function NewDiscussionDialog() {
           </div>
         )}
       </div>
+      {scope && (
+        <ArrangeDialog
+          open={arrange}
+          onClose={() => {
+            setArrange(false);
+            live.closeNewDiscussion();
+          }}
+          project={scope}
+          role={role}
+          topic={topic}
+        />
+      )}
     </Dialog>
   );
 }
