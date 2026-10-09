@@ -1,0 +1,8 @@
+description: UI/UX or visual design work without code.
+repo: none
+roles: [project-manager, analyst, uiux]
+deliverable: Flows, screens and specifications under uiux/ that a developer could build from.
+agent_hint: >-
+  This is a design project without a code repository. Produce flows, screens, component
+  specs and the design system under uiux/, following templates/uiux-spec.md. Note every
+  open product question in requirements/open-questions.md.

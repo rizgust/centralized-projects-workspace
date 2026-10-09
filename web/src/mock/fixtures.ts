@@ -1,5 +1,13 @@
 // Realistic fixture data for mock mode. Deterministic (seeded) so screenshots are stable.
-import type { ProjectDetail, Role, RoleInfo, Run, SessionInfo, Task, TaskStatus, Tokens, UsageRow } from "../api/types";
+import type { KindInfo, ProjectDetail, RepoMode, Role, RoleInfo, Run, SessionInfo, Task, TaskStatus, Tokens, UsageRow } from "../api/types";
+
+export const KINDS: KindInfo[] = [
+  { name: "software", description: "A product codebase: features, tests, releases. The full team works in a cloned repository.", repo: "clone", roles: ["analyst", "project-manager", "uiux", "frontend", "backend", "infra"], deliverable: "Working, tested software in the repo", agentHint: "Follow the repo's conventions; every change maps to a task." },
+  { name: "prototype", description: "A quick full-stack mockup or spike to try an idea. Lives in a fresh local git repo.", repo: "local", roles: ["project-manager", "uiux", "frontend", "backend"], deliverable: "A clickable prototype and a short findings note", agentHint: "Speed over polish; record what was learned." },
+  { name: "investigation", description: "A small research question: compare vendors, read docs, size an integration. No code repo.", repo: "none", roles: ["project-manager", "analyst", "infra"], deliverable: "A written recommendation with sources", agentHint: "Cite sources; end with a clear recommendation." },
+  { name: "design", description: "Flows, screens and a visual system before any code is written.", repo: "none", roles: ["project-manager", "analyst", "uiux"], deliverable: "Specs, wireframes and a component inventory", agentHint: "Spec states and edge cases so Frontend need not guess." },
+  { name: "general", description: "Anything else: planning, writing, admin. A small office with the PM and Analyst.", repo: "none", roles: ["project-manager", "analyst"], deliverable: "Whatever the Owner asks for, as files in the project folder", agentHint: "Keep notes in the project folder." },
+];
 
 export function rng(seed: number) {
   let a = seed >>> 0;
@@ -36,6 +44,8 @@ export interface ProjectSeed {
   workingBranch: string;
   health: string;
   repoExists: boolean;
+  kind: string;
+  repoMode: RepoMode;
   git: { branch: string; dirty: number; ahead: number; behind: number } | null;
   features: ProjectDetail["features"];
   decisions: ProjectDetail["decisions"];
@@ -55,6 +65,8 @@ export const PROJECTS: ProjectSeed[] = [
     workingBranch: "feat/monthly-report",
     health: "green",
     repoExists: true,
+    kind: "software",
+    repoMode: "clone",
     git: { branch: "feat/monthly-report", dirty: 3, ahead: 2, behind: 0 },
     features: [
       { id: "F-01", title: "Expense capture", status: "completed" },
@@ -81,6 +93,8 @@ export const PROJECTS: ProjectSeed[] = [
     workingBranch: "dev",
     health: "yellow",
     repoExists: true,
+    kind: "prototype",
+    repoMode: "local",
     git: { branch: "dev", dirty: 0, ahead: 0, behind: 4 },
     features: [
       { id: "F-01", title: "Core movement & combat", status: "completed" },
@@ -93,20 +107,22 @@ export const PROJECTS: ProjectSeed[] = [
     currentReportMd: `# Current report\n\nPlaytest #3 feedback is being synthesised. CI export builds for Windows/Linux are in progress.\n`,
   },
   {
-    id: "starter-kit",
-    name: "Starter Kit",
+    id: "vendor-research",
+    name: "Vendor Research",
     type: "template",
     classification: "work",
-    remote: "git@github.com:example/starter-kit.git",
+    remote: "",
     defaultBranch: "main",
     workingBranch: "main",
     health: "green",
     repoExists: false,
+    kind: "investigation",
+    repoMode: "none",
     git: null,
-    features: [{ id: "F-01", title: "Workspaces + plan flags", status: "completed" }],
+    features: [{ id: "F-01", title: "Payment provider shortlist", status: "active" }],
     decisions: [],
-    projectMd: `# Starter Kit\n\nReusable web app starter: workspaces, plan flags & limits, billing, local admin, i18n.\n`,
-    statusMd: `# Status\n\nHealth: green\n\nRepo not cloned on this machine yet.\n`,
+    projectMd: `# Vendor Research\n\nWhich payment provider should the products share? Compare fees, payouts in IDR, SDK quality and webhooks.\n\n- Shortlist 3 providers\n- Size the integration effort\n- Recommend one\n`,
+    statusMd: `# Status\n\nHealth: green\n\nInvestigation in progress; no repository.\n`,
     currentReportMd: "",
   },
 ];
@@ -140,10 +156,10 @@ const TASK_ROWS: Record<string, T[]> = {
     ["TASK-006", "ready", "backend", 8, "high", "high", "F-03", "Enemy pathfinding on hex grid"],
     ["TASK-007", "backlog", "project-manager", 2, "medium", "low", null, "Milestone M2 plan"],
   ],
-  "starter-kit": [
-    ["TASK-001", "completed", "infra", 2, "medium", "low", "F-01", "Local dev stack script"],
-    ["TASK-002", "active", "project-manager", 1, "medium", "low", null, "Release checklist v0.3"],
-    ["TASK-003", "ready", "analyst", 3, "medium", "low", null, "Audit plan flags vs limits"],
+  "vendor-research": [
+    ["TASK-001", "completed", "infra", 2, "medium", "low", "F-01", "Webhook reliability notes"],
+    ["TASK-002", "active", "project-manager", 1, "medium", "low", null, "Investigation brief and scope"],
+    ["TASK-003", "ready", "analyst", 3, "medium", "low", "F-01", "Compare fees and payout times"],
   ],
 };
 
@@ -320,7 +336,7 @@ export function seedUsage(now: number, days = 90): UsageDay[] {
 export const PROJECT_SHARE: [string, number][] = [
   ["atlas-web", 0.54],
   ["pixel-quest", 0.27],
-  ["starter-kit", 0.11],
+  ["vendor-research", 0.11],
   ["workspace", 0.08],
 ];
 
@@ -332,7 +348,7 @@ export function seedSessions(now: number): SessionInfo[] {
     ["atlas-web", "run", "run-5b21", HOUR + 48 * MIN, false, "claude-sonnet-4-5"],
     ["pixel-quest", "run", "run-3c09", 4 * HOUR + 21 * MIN, false, "claude-opus-4-1"],
     ["atlas-web", "interactive", null, 7 * HOUR, false, "claude-opus-4-1"],
-    ["starter-kit", "interactive", null, DAY + 2 * HOUR, false, "claude-sonnet-4-5"],
+    ["vendor-research", "interactive", null, DAY + 2 * HOUR, false, "claude-sonnet-4-5"],
     ["pixel-quest", "interactive", null, 2 * DAY, false, "claude-sonnet-4-5"],
     ["workspace", "interactive", null, 3 * DAY + 5 * HOUR, false, "claude-haiku-4-5"],
     ["atlas-web", "interactive", null, 4 * DAY, false, "claude-opus-4-1"],

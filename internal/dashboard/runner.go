@@ -39,8 +39,9 @@ type Run struct {
 	LastText       string   `json:"lastText"`
 	Error          *string  `json:"error"`
 	Cwd            string   `json:"cwd"`
-	ParentRunID    *string  `json:"parentRunId"` // set when this run resumes an earlier run's session
-	QuestionID     *string  `json:"questionId"`  // the owner question this run answers
+	ParentRunID    *string  `json:"parentRunId"`  // set when this run resumes an earlier run's session
+	QuestionID     *string  `json:"questionId"`   // the owner question this run answers
+	DiscussionID   *string  `json:"discussionId"` // set for discussion turns
 }
 
 type RunEvent struct {
@@ -65,6 +66,9 @@ type RunRequest struct {
 	resumeSession string
 	parentRun     string
 	questionID    string
+	// discussions: a conversation with the Owner in plan (read-only) mode
+	discussionID    string
+	discussionTopic string
 }
 
 const maxEventsInMemory = 3000
@@ -222,9 +226,13 @@ func roleAgentPrompt(root, role string) (string, string, error) {
 }
 
 func (r *runner) start(cfg workspace.Config, req RunRequest) (Run, error) {
-	p, ok := cfg.Projects[req.Project]
-	if !ok {
-		return Run{}, fmt.Errorf("unknown project %q", req.Project)
+	discussion := req.discussionID != ""
+	var p workspace.Project
+	if req.Project != "" || !discussion {
+		var ok bool
+		if p, ok = cfg.Projects[req.Project]; !ok {
+			return Run{}, fmt.Errorf("unknown project %q", req.Project)
+		}
 	}
 	if !workspace.IsRole(req.Role) {
 		return Run{}, fmt.Errorf("unknown role %q", req.Role)
@@ -232,7 +240,10 @@ func (r *runner) start(cfg workspace.Config, req RunRequest) (Run, error) {
 	if strings.TrimSpace(req.Prompt) == "" && req.TaskID == nil {
 		return Run{}, fmt.Errorf("a prompt or a task is required")
 	}
-	if req.PermissionMode != "acceptEdits" && req.PermissionMode != "bypassPermissions" {
+	switch {
+	case discussion && req.PermissionMode != "plan":
+		return Run{}, fmt.Errorf("discussions run in plan (read-only) mode")
+	case !discussion && req.PermissionMode != "acceptEdits" && req.PermissionMode != "bypassPermissions":
 		return Run{}, fmt.Errorf("permissionMode must be acceptEdits or bypassPermissions")
 	}
 	if req.BudgetUSD <= 0 || req.BudgetUSD > 100 {
@@ -247,9 +258,21 @@ func (r *runner) start(cfg workspace.Config, req RunRequest) (Run, error) {
 		return Run{}, err
 	}
 
-	cwd := filepath.Join(r.root, filepath.FromSlash(p.RepoPath))
-	if _, err := os.Stat(cwd); err != nil {
-		cwd = filepath.Join(r.root, filepath.FromSlash(p.ProjectPath))
+	// Working directory: the repo when there is one, else the project folder, else
+	// (workspace-level discussions) the workspace root.
+	cwd := r.root
+	projectDir, repoDir := "", ""
+	var kind workspace.KindInfo
+	if req.Project != "" {
+		projectDir = filepath.Join(r.root, filepath.FromSlash(p.ProjectPath))
+		cwd = projectDir
+		if p.RepoMode() != workspace.RepoNone {
+			repoDir = filepath.Join(r.root, filepath.FromSlash(p.RepoPath))
+			if _, err := os.Stat(repoDir); err == nil {
+				cwd = repoDir
+			}
+		}
+		kind, _ = workspace.LoadKind(r.root, p.KindOf())
 	}
 	taskLine := ""
 	if req.TaskID != nil && *req.TaskID != "" {
@@ -281,13 +304,39 @@ func (r *runner) start(cfg workspace.Config, req RunRequest) (Run, error) {
 		taskRef = *req.TaskID
 	}
 	agents, _ := json.Marshal(map[string]map[string]string{req.Role: {"description": desc, "prompt": agentPrompt}})
-	system := strings.Join([]string{
-		"Workspace root (all role/policy paths are relative to it): " + r.root,
-		"Active project for this run: " + req.Project + ". Project knowledge: " + filepath.Join(r.root, filepath.FromSlash(p.ProjectPath)) + ". Repository: " + filepath.Join(r.root, filepath.FromSlash(p.RepoPath)) + ".",
-		taskLine,
-		"You were launched headless from the Projects-Centralized dashboard. Follow AGENTS.md. Never commit or push. When you finish, update the task file's notes and status as your role definition says, and end with a short report of what changed and what you verified.",
-		ownerQuestionPrompt(r.qdir, req.Project, req.Role, runID, sessionID, taskRef),
-	}, "\n")
+	lines := []string{"Workspace root (all role/policy paths are relative to it): " + r.root}
+	if req.Project != "" {
+		repoLine := "No repository: this is a " + kind.Name + " project, so work in the project folder."
+		if repoDir != "" {
+			repoLine = "Repository: " + repoDir + "."
+		}
+		lines = append(lines, "Project: "+req.Project+" (kind: "+p.KindOf()+"). Project knowledge: "+projectDir+". "+repoLine)
+		if kind.AgentHint != "" {
+			lines = append(lines, kind.AgentHint)
+		}
+		if kind.Deliverable != "" && !discussion {
+			lines = append(lines, "Deliverable for this kind of project: "+kind.Deliverable)
+		}
+	}
+	if discussion {
+		scope := "the whole workspace: you may read every project's knowledge under projects/ and their repositories under repos/, which is what finding integrations between them needs"
+		if req.Project != "" {
+			scope = "project " + req.Project + " (other projects stay off limits)"
+		}
+		lines = append(lines,
+			"This is a DISCUSSION with the Owner, not a task: brainstorming, exploring options, finding integration possibilities. Topic: "+req.discussionTopic+".",
+			"Scope: "+scope+".",
+			"You are in plan (read-only) mode: read files, search, and reason, but do not modify anything. Be conversational and concise: offer concrete options with trade-offs, say what you checked, and ask the Owner a clarifying question in your reply when you need one.",
+			"When the Owner asks you to wrap up, reply with exactly these sections: ## Summary, ## Ideas, ## Decisions, ## Next steps (each next step as `- [role] action (project)`), ## Open questions.",
+		)
+	} else {
+		lines = append(lines,
+			taskLine,
+			"You were launched headless from the Projects-Centralized dashboard. Follow AGENTS.md. Never commit or push. When you finish, update the task file's notes and status as your role definition says, and end with a short report of what changed and what you verified.",
+			ownerQuestionPrompt(r.qdir, req.Project, req.Role, runID, sessionID, taskRef),
+		)
+	}
+	system := strings.Join(lines, "\n")
 	prompt := req.Prompt
 	if strings.TrimSpace(prompt) == "" {
 		prompt = "Work on the task described in your instructions."
@@ -337,6 +386,9 @@ func (r *runner) start(cfg workspace.Config, req RunRequest) (Run, error) {
 	}
 	if req.questionID != "" {
 		st.run.QuestionID = strp(req.questionID)
+	}
+	if discussion {
+		st.run.DiscussionID = strp(req.discussionID)
 	}
 	r.mu.Lock()
 	r.runs[st.run.ID] = st

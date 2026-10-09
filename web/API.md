@@ -151,6 +151,13 @@ interface SystemHistory { points: { t: string; cpu: number; mem: number }[] }   
 | GET | `/api/usage` | `?days=30` (1–365) | `Usage` |
 | GET | `/api/system` | | `SystemSnapshot` |
 | GET | `/api/system/history` | | `SystemHistory` |
+| GET | `/api/kinds` | | `KindInfo[]` (software first) |
+| GET | `/api/discussions` | | `DiscussionSummary[]` (latest activity first) |
+| POST | `/api/discussions` | `{topic, project?, role?, budgetUsd?, model?, message?, override?}` | `{discussion: Discussion, run: Run \| null}` |
+| GET | `/api/discussions/{id}` | | `Discussion` |
+| POST | `/api/discussions/{id}/messages` | `{text, override?}` | `{discussion, run}` |
+| POST | `/api/discussions/{id}/wrapup` | `{override?}` | `{discussion, run}` |
+| POST | `/api/discussions/{id}/close` · `/reopen` | | `Discussion` |
 | GET | `/api/prayer` | | `PrayerStatus` |
 | GET | `/api/questions` | | `Question[]` (open first, newest first) |
 | POST | `/api/questions/{id}/answer` | `{answer, resume?: boolean, override?: boolean}` | `{question: Question, run: Run \| null}` |
@@ -158,6 +165,50 @@ interface SystemHistory { points: { t: string; cpu: number; mem: number }[] }   
 | GET | `/api/events` | `?token=` (SSE) | event stream, below |
 
 Starting a run with a `taskId` whose task is `backlog`/`ready` moves the task to `active`.
+
+### Project kinds
+
+```ts
+interface KindInfo {
+  name: string;           // software | prototype | investigation | design | general | (custom)
+  description: string;
+  repo: "clone" | "local" | "none";   // default repo mode for the kind
+  roles: Role[];          // roles involved by default
+  deliverable: string;
+  agentHint: string;
+}
+```
+
+`POST /api/projects` takes `kind` (default software), an optional `type` label, and
+`repo` (default from the kind). `remote` is required only when `repo` is `clone`, and
+`clone: true` runs `pcctl init` for the project (clone or git init). `ProjectSummary`
+adds `kind`, `repoMode` and `roles`; `repoExists` is always false for `repoMode: "none"`.
+Office rooms add `kind` and `roles`: draw only the involved roles' desks for non-software
+rooms (an investigation room is a small study, not six cubicles).
+
+### Discussions (talk with the Analyst or any role)
+
+```ts
+interface DiscussionTurn { who: "owner" | "agent"; role: string; at: string; text: string;
+                           runId: string | null; wrapup: boolean; error: boolean }
+interface DiscussionSummary {
+  id: string; topic: string; project: string | null;   // null = workspace-wide
+  role: Role; sessionId: string | null; status: "open" | "closed"; budgetUsd: number;
+  model: string | null; createdAt: string; updatedAt: string; costUsd: number;
+  wrappedUp: boolean; path: string; turns: number; lastMessage: string;
+  running: string | null;                               // run id while the role is answering
+}
+interface Discussion extends Omit<DiscussionSummary, "turns" | "lastMessage"> { turns: DiscussionTurn[] }
+```
+
+Each Owner message starts a plan-mode run that resumes the discussion's session; the
+reply is appended when the run ends (the `runs`, `run-event` and `discussions` SSE events
+carry progress). Sending while `running` is set returns 400. Sending during sholat returns
+423 (override possible). Wrap-up asks for Summary, Ideas, Decisions, Next steps and Open
+questions. Discussion runs carry `Run.discussionId`, and never create owner questions.
+`Office.discussions: {id, role, project, topic, running}[]` lists live discussions:
+that role's worker sits with the Owner in the Owner's room (talking pose while
+`running`).
 
 Worker state priority: working > asking > blocked > review > waiting > idle. An agent asks
 the Owner by writing `runtime/agent-messages/owner/<id>.yaml` (the run's system prompt
@@ -199,3 +250,4 @@ Prayer times are computed offline (Kemenag RI parameters, configured under `pray
 | `usage` | `{ today: UsageRow }` | after each usage rescan (every 30 s) |
 | `prayer` | `PrayerStatus` | on connect, and whenever a sholat window opens or closes |
 | `questions` | `Question[]` | on connect, and whenever a question is filed, answered or dismissed |
+| `discussions` | `DiscussionSummary[]` | on connect, and on every new message, reply, close or reopen |

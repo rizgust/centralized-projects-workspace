@@ -26,6 +26,21 @@ export interface ProjectSummary {
   weightDone: number;
   weightTotal: number;
   git: GitInfo | null;
+  /** project kind (software | prototype | investigation | design | general | custom) */
+  kind?: string;
+  repoMode?: RepoMode;
+  /** roles involved in this project */
+  roles?: Role[];
+}
+
+export type RepoMode = "clone" | "local" | "none";
+export interface KindInfo {
+  name: string;
+  description: string;
+  repo: RepoMode;
+  roles: Role[];
+  deliverable: string;
+  agentHint: string;
 }
 
 export interface ProjectDetail extends ProjectSummary {
@@ -99,6 +114,7 @@ export interface Run {
   parentRunId?: string | null;
   /** the owner question this run continues from */
   questionId?: string | null;
+  discussionId?: string | null;
 }
 
 export type RunEventKind = "system" | "assistant_text" | "tool_use" | "tool_result" | "result" | "stderr";
@@ -132,6 +148,8 @@ export interface OfficeRoom {
   name: string;
   active: boolean;
   workers: Worker[];
+  kind?: string;
+  roles?: Role[];
 }
 
 export interface Office {
@@ -140,6 +158,47 @@ export interface Office {
   hq: Worker[];
   interactiveSessions: number;
   openQuestions?: number;
+  discussions?: { id: string; role: Role; project: string | null; topic: string; running: string | null }[];
+}
+
+export interface DiscussionTurn {
+  who: "owner" | "agent";
+  role: string;
+  at: string;
+  text: string;
+  runId: string | null;
+  wrapup: boolean;
+  error: boolean;
+}
+export interface DiscussionSummary {
+  id: string;
+  topic: string;
+  project: string | null;
+  role: Role;
+  sessionId: string | null;
+  status: "open" | "closed";
+  budgetUsd: number;
+  model: string | null;
+  createdAt: string;
+  updatedAt: string;
+  costUsd: number;
+  wrappedUp: boolean;
+  path: string;
+  turns: number;
+  lastMessage: string;
+  running: string | null;
+}
+export interface Discussion extends Omit<DiscussionSummary, "turns" | "lastMessage"> {
+  turns: DiscussionTurn[];
+}
+export interface NewDiscussionBody {
+  topic: string;
+  project?: string | null;
+  role?: Role;
+  budgetUsd?: number;
+  model?: string;
+  message?: string;
+  override?: boolean;
 }
 
 export interface Question {
@@ -244,6 +303,8 @@ export interface RegisterProjectBody {
   defaultBranch?: string;
   workingBranch?: string;
   clone?: boolean;
+  kind?: string;
+  repo?: RepoMode;
 }
 
 export type CreateTaskBody = Partial<Task> & { title: string; owner: Role | string };
@@ -302,6 +363,7 @@ export interface SseEventMap {
   usage: { today: UsageRow };
   prayer: PrayerStatus;
   questions: Question[];
+  discussions: DiscussionSummary[];
 }
 
 export type SseEventName = keyof SseEventMap;

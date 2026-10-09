@@ -14,12 +14,20 @@ import type {
   SystemPoint,
   SystemSnapshot,
   UsageRow,
+  DiscussionSummary,
+  KindInfo,
 } from "./api/types";
 
 export interface Toast {
   id: number;
   kind: "info" | "success" | "error";
   text: string;
+}
+
+export interface NewDiscussionPrefill {
+  project?: string | null;
+  role?: Role;
+  topic?: string;
 }
 
 export interface LaunchPrefill {
@@ -44,6 +52,11 @@ interface Live {
   roles: RoleInfo[];
   prayer: PrayerStatus | null;
   questions: Question[];
+  discussions: DiscussionSummary[];
+  kinds: KindInfo[];
+  newDiscussion: NewDiscussionPrefill | null;
+  openNewDiscussion: (p?: NewDiscussionPrefill) => void;
+  closeNewDiscussion: () => void;
   inbox: string | null | false;
   openInbox: (questionId?: string) => void;
   closeInbox: () => void;
@@ -89,6 +102,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const prevActive = useRef<string | null | undefined>(undefined);
   const [questions, setQuestionsState] = useState<Question[]>([]);
   const [inbox, setInbox] = useState<string | null | false>(false);
+  const [discussions, setDiscussions] = useState<DiscussionSummary[]>([]);
+  const [kinds, setKinds] = useState<KindInfo[]>([]);
+  const [newDiscussion, setNewDiscussion] = useState<NewDiscussionPrefill | null>(null);
   const seenQ = useRef<Set<string> | null>(null);
   const [tasksVersion, setTasksVersion] = useState(0);
   const [projectsVersion, setProjectsVersion] = useState(0);
@@ -188,6 +204,8 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         setError(null);
         api.prayer().then(setPrayer).catch(() => {});
         api.questions().then(setQuestions).catch(() => {});
+        api.discussions().then(setDiscussions).catch(() => {});
+        api.kinds().then(setKinds).catch(() => {});
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       }
@@ -230,6 +248,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
           break;
         case "questions":
           setQuestions(data as Question[]);
+          break;
+        case "discussions":
+          setDiscussions(data as DiscussionSummary[]);
           break;
         case "run-event":
           break;
@@ -274,6 +295,11 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       roles,
       prayer,
       questions,
+      discussions,
+      kinds,
+      newDiscussion,
+      openNewDiscussion: (p?: NewDiscussionPrefill) => setNewDiscussion(p ?? {}),
+      closeNewDiscussion: () => setNewDiscussion(null),
       inbox,
       openInbox: (id?: string) => setInbox(id ?? null),
       closeInbox: () => setInbox(false),
@@ -292,7 +318,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       setRegisterOpen,
       error,
     }),
-    [conn, workspace, projects, activeProject, office, runs, system, sysPoints, usageToday, roles, prayer, questions, inbox, tasksVersion, projectsVersion, toasts, toast, dismissToast, refreshProjects, activate, on, launch, registerOpen, error],
+    [conn, workspace, projects, activeProject, office, runs, system, sysPoints, usageToday, roles, prayer, questions, discussions, kinds, newDiscussion, inbox, tasksVersion, projectsVersion, toasts, toast, dismissToast, refreshProjects, activate, on, launch, registerOpen, error],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -1,0 +1,8 @@
+description: A mockup, spike or full-stack prototype built from scratch to test an idea.
+repo: local
+roles: [project-manager, analyst, uiux, frontend, backend]
+deliverable: A runnable prototype that demonstrates what brief.md asks for, with a short demo note.
+agent_hint: >-
+  This is a prototype. Optimise for demonstrating the idea in brief.md quickly: prefer
+  simple, disposable choices over production hardening, but keep it runnable and write
+  how to run it in the repository README.

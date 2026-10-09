@@ -48,6 +48,7 @@ type server struct {
 	usage *usageIndex
 	sys   *sysmon
 	qs    *questionStore
+	ds    *discussionStore
 
 	mu         sync.Mutex
 	lastOffice []byte
@@ -75,7 +76,12 @@ func Serve(root string, opt Options) error {
 		s.hub.publish("run-event", map[string]any{"runId": id, "event": ev})
 	})
 	s.qs = newQuestionStore(root)
+	s.ds = &discussionStore{root: root}
 	s.runs.onFinish = func(run Run, final string) {
+		if run.DiscussionID != nil {
+			s.discussionReply(run, final)
+			return
+		}
 		s.qs.autoQuestion(run, final)
 		s.hub.publish("questions", s.qs.list())
 	}
@@ -163,6 +169,11 @@ func (s *server) workspaceSig() string {
 	}
 	add(filepath.Join(s.root, "workspace.yaml"))
 	add(filepath.Join(s.root, "active-project.yaml"))
+	if df, err := filepath.Glob(filepath.Join(s.root, "discussions", "*.md")); err == nil {
+		for _, f := range df {
+			add(f)
+		}
+	}
 	if qf, err := filepath.Glob(filepath.Join(s.qs.dir, "*.yaml")); err == nil {
 		for _, f := range qf {
 			add(f)
@@ -183,7 +194,113 @@ func (s *server) runsChanged() {
 }
 
 func (s *server) office() Office {
-	return buildOffice(s.root, s.cfg(), s.runs.list(), s.qs.open(), s.usage.liveInteractive())
+	o := buildOffice(s.root, s.cfg(), s.runs.list(), s.qs.open(), s.usage.liveInteractive())
+	for _, d := range s.ds.list(s.discussionRunning) {
+		updated, _ := time.Parse(time.RFC3339, d.UpdatedAt)
+		if d.Status == "open" && (d.Running != nil || time.Since(updated) < 20*time.Minute) {
+			o.Discussions = append(o.Discussions, ActiveDiscussion{ID: d.ID, Role: d.Role, Project: d.Project, Topic: d.Topic, Running: d.Running != nil})
+		}
+	}
+	return o
+}
+
+// discussionRunning returns the run id of a discussion turn in progress.
+func (s *server) discussionRunning(id string) *string {
+	for _, r := range s.runs.list() {
+		if r.Status == "running" && r.DiscussionID != nil && *r.DiscussionID == id {
+			rid := r.ID
+			return &rid
+		}
+	}
+	return nil
+}
+
+// discussionTurn records the Owner's message and starts the role's reply as a
+// plan-mode run on the discussion's Claude session.
+func (s *server) discussionTurn(w http.ResponseWriter, id, text string, wrapup, override bool) (any, error) {
+	if strings.TrimSpace(text) == "" {
+		return nil, errors.New("message is required")
+	}
+	disc, err := s.ds.get(id)
+	if err != nil {
+		return nil, err
+	}
+	if disc.Status != "open" {
+		return nil, errors.New("this discussion is closed; reopen it to continue")
+	}
+	if r := s.discussionRunning(id); r != nil {
+		return nil, fmt.Errorf("%s is still answering (run %s)", roleName(disc.Role), *r)
+	}
+	pc := loadPrayerConfig(s.root)
+	if st := prayerStatus(pc, time.Now()); st.Active != nil && pc.HoldLaunches && !override {
+		end, _ := time.Parse(time.RFC3339, st.Active.EndsAt)
+		writeErr(w, http.StatusLocked, fmt.Errorf("agents are at sholat %s until %s; retry with override", st.Active.Name, end.Format("15:04")))
+		return nil, errHandled
+	}
+	req := RunRequest{
+		Role: disc.Role, Prompt: text, PermissionMode: "plan", BudgetUSD: disc.BudgetUSD,
+		discussionID: disc.ID, discussionTopic: disc.Topic, Model: disc.Model,
+	}
+	if disc.Project != nil {
+		req.Project = *disc.Project
+	}
+	if disc.SessionID != nil {
+		req.resumeSession = *disc.SessionID
+	}
+	run, err := s.runs.start(s.cfg(), req)
+	if err != nil {
+		return nil, err
+	}
+	updated, err := s.ds.update(id, func(d *Discussion) error {
+		if d.SessionID == nil {
+			sid := run.SessionID
+			d.SessionID = &sid
+		}
+		rid := run.ID
+		d.Turns = append(d.Turns, DiscussionTurn{Who: "owner", Role: "owner", At: time.Now().Format(time.RFC3339), Text: text, RunID: &rid, Wrapup: wrapup})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	updated.Running = &run.ID
+	s.hub.publish("discussions", s.ds.list(s.discussionRunning))
+	s.publishOffice()
+	return map[string]any{"discussion": updated, "run": run}, nil
+}
+
+// discussionReply appends the role's answer when its run finishes.
+func (s *server) discussionReply(run Run, final string) {
+	text, isErr := strings.TrimSpace(final), false
+	if text == "" || run.Status != "succeeded" {
+		isErr = true
+		reason := run.Status
+		if run.Error != nil {
+			reason = *run.Error
+		}
+		if text == "" {
+			text = "(no reply: " + reason + ")"
+		}
+	}
+	_, _ = s.ds.update(*run.DiscussionID, func(d *Discussion) error {
+		wrapup := false
+		for _, t := range d.Turns {
+			if t.Who == "owner" && t.RunID != nil && *t.RunID == run.ID && t.Wrapup {
+				wrapup = true
+			}
+		}
+		rid := run.ID
+		d.Turns = append(d.Turns, DiscussionTurn{Who: "agent", Role: run.Role, At: time.Now().Format(time.RFC3339), Text: text, RunID: &rid, Wrapup: wrapup, Error: isErr})
+		if run.CostUSD != nil {
+			d.CostUSD += *run.CostUSD
+		}
+		if wrapup && !isErr {
+			d.WrappedUp = true
+		}
+		return nil
+	})
+	s.hub.publish("discussions", s.ds.list(s.discussionRunning))
+	s.publishOffice()
 }
 
 func (s *server) publishOffice() {
@@ -402,6 +519,95 @@ func (s *server) routes() http.Handler {
 		}
 		return s.runs.start(s.cfg(), req)
 	})
+	h("GET /api/kinds", func(w http.ResponseWriter, r *http.Request) (any, error) {
+		return workspace.Kinds(s.root), nil
+	})
+	h("GET /api/discussions", func(w http.ResponseWriter, r *http.Request) (any, error) {
+		return s.ds.list(s.discussionRunning), nil
+	})
+	h("POST /api/discussions", func(w http.ResponseWriter, r *http.Request) (any, error) {
+		var req struct {
+			Topic     string  `json:"topic"`
+			Project   string  `json:"project"`
+			Role      string  `json:"role"`
+			BudgetUSD float64 `json:"budgetUsd"`
+			Model     string  `json:"model"`
+			Message   string  `json:"message"` // optional opening message
+			Override  bool    `json:"override"`
+		}
+		if err := readJSON(r, &req); err != nil {
+			return nil, err
+		}
+		if req.Role == "" {
+			req.Role = "analyst"
+		}
+		if !workspace.IsRole(req.Role) {
+			return nil, fmt.Errorf("unknown role %q", req.Role)
+		}
+		if req.Project != "" {
+			if _, ok := s.cfg().Projects[req.Project]; !ok {
+				return nil, fmt.Errorf("unknown project %q", req.Project)
+			}
+		}
+		if req.BudgetUSD == 0 {
+			req.BudgetUSD = 1
+		}
+		if req.BudgetUSD < 0 || req.BudgetUSD > 20 {
+			return nil, errors.New("budgetUsd per message must be between 0 and 20")
+		}
+		disc, err := s.ds.create(req.Topic, req.Project, req.Role, req.BudgetUSD, req.Model)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(req.Message) != "" {
+			return s.discussionTurn(w, disc.ID, req.Message, false, req.Override)
+		}
+		s.hub.publish("discussions", s.ds.list(s.discussionRunning))
+		return map[string]any{"discussion": disc, "run": nil}, nil
+	})
+	h("GET /api/discussions/{id}", func(w http.ResponseWriter, r *http.Request) (any, error) {
+		disc, err := s.ds.get(r.PathValue("id"))
+		if err != nil {
+			return nil, err
+		}
+		disc.Running = s.discussionRunning(disc.ID)
+		return disc, nil
+	})
+	h("POST /api/discussions/{id}/messages", func(w http.ResponseWriter, r *http.Request) (any, error) {
+		var req struct {
+			Text     string `json:"text"`
+			Override bool   `json:"override"`
+		}
+		if err := readJSON(r, &req); err != nil {
+			return nil, err
+		}
+		return s.discussionTurn(w, r.PathValue("id"), req.Text, false, req.Override)
+	})
+	h("POST /api/discussions/{id}/wrapup", func(w http.ResponseWriter, r *http.Request) (any, error) {
+		var req struct {
+			Override bool `json:"override"`
+		}
+		_ = readJSON(r, &req)
+		return s.discussionTurn(w, r.PathValue("id"), wrapupPrompt, true, req.Override)
+	})
+	for _, action := range []string{"close", "reopen"} {
+		action := action
+		h("POST /api/discussions/{id}/"+action, func(w http.ResponseWriter, r *http.Request) (any, error) {
+			disc, err := s.ds.update(r.PathValue("id"), func(d *Discussion) error {
+				if action == "close" {
+					d.Status = "closed"
+				} else {
+					d.Status = "open"
+				}
+				return nil
+			})
+			if err == nil {
+				s.hub.publish("discussions", s.ds.list(s.discussionRunning))
+				s.publishOffice()
+			}
+			return disc, err
+		})
+	}
 	h("GET /api/questions", func(w http.ResponseWriter, r *http.Request) (any, error) {
 		return s.qs.list(), nil
 	})
@@ -530,7 +736,8 @@ func (s *server) events(w http.ResponseWriter, r *http.Request) {
 		name string
 		data any
 	}{{"system", s.sys.snapshot()}, {"runs", s.runs.list()}, {"office", s.office()},
-		{"prayer", prayerStatus(loadPrayerConfig(s.root), time.Now())}, {"questions", s.qs.list()}} {
+		{"prayer", prayerStatus(loadPrayerConfig(s.root), time.Now())}, {"questions", s.qs.list()},
+		{"discussions", s.ds.list(s.discussionRunning)}} {
 		b, _ := json.Marshal(ev.data)
 		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.name, b)
 	}

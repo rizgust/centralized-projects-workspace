@@ -12,6 +12,12 @@ pass for ONE project: `<id>`. Read and follow `agents/analyst.md`.
 Paths are relative to the repo root. The spec is `BOOTSTRAP.md` (§5, §7, §19–§23, §28–§30,
 §42, §50). Rules: `AGENTS.md`, `shared/policies/*.md`. Use `templates/*` exactly.
 
+Read the project's `kind` in `workspace.yaml` and `templates/kinds/<kind>/kind.yaml`
+first. The deliverables below are for `software`; for other kinds, fill in the files
+that kind scaffolded instead (`prototype`: brief, requirements, sketch;
+`investigation`: brief, sub-questions, sources; `design`: brief, design system, flows;
+`general`: brief). Never invent architecture docs for a project without code.
+
 Sources (read only):
 - the repo at `workspace.yaml` → `projects.<id>.repo_path`, plus its in-repo docs
 - any earlier records for this project the Owner points to. Treat them as a

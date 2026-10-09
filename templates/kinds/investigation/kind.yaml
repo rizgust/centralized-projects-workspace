@@ -1,0 +1,10 @@
+description: Research, analysis or a question to answer. No code repository.
+repo: none
+roles: [project-manager, analyst, infra]
+deliverable: report.md, a sourced answer with confidence and recommendations.
+agent_hint: >-
+  This is an investigation, not a software project, and there is no repository: work
+  in the project folder. Answer the question in brief.md. Record every source in
+  sources.md, dated working notes in findings.md, and the final answer in report.md
+  (summary, answer, evidence, confidence, recommendations). Keep facts apart from
+  inferences.

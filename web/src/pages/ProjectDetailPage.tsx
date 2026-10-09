@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { ProjectDetail } from "../api/types";
 import { useLive } from "../store";
-import { HealthBadge, Markdown, Progress, Tabs } from "../components/ui";
+import { HealthBadge, KindBadge, Markdown, Progress, Tabs } from "../components/ui";
 
 type Tab = "status" | "report" | "project";
 
@@ -36,10 +36,15 @@ export function ProjectDetailPage() {
       <div className="page-head">
         <div>
           <h1 className="pixel-title">
-            {p.name} {p.active && <span className="badge badge-active">Active</span>}
+            {p.name} {p.active && <span className="badge badge-active">Active</span>} <KindBadge kind={p.kind} />
           </h1>
           <p className="muted">
-            {p.id} · {p.type} · {p.classification} · <code>{p.repoPath}</code> {p.repoExists ? "" : "(not cloned)"}
+            {p.id} · {p.type} · {p.classification} ·{" "}
+            {p.repoMode === "none" ? "No repository" : (
+              <>
+                <code>{p.repoPath}</code> {p.repoExists ? "" : "(not cloned)"}
+              </>
+            )}
           </p>
         </div>
         <div className="row-wrap">
@@ -49,6 +54,9 @@ export function ProjectDetailPage() {
           <Link className="btn" to={`/tasks?project=${encodeURIComponent(p.id)}`}>
             Open tasks
           </Link>
+          <button className="btn" onClick={() => live.openNewDiscussion({ project: p.id, role: "analyst" })}>
+            Discuss with Analyst
+          </button>
           <button className="btn btn-primary" onClick={() => live.openLaunch({ project: p.id })}>
             Launch agent
           </button>
@@ -88,7 +96,7 @@ export function ProjectDetailPage() {
                 default <code>{p.defaultBranch}</code>, working <code>{p.workingBranch || p.defaultBranch}</code>
               </dd>
               <dt>Git</dt>
-              <dd>{p.git ? `⎇ ${p.git.branch} · ${p.git.dirty} dirty · ↑${p.git.ahead} ↓${p.git.behind}` : "no git info"}</dd>
+              <dd>{p.repoMode === "none" ? "No repository" : p.git ? `⎇ ${p.git.branch} · ${p.git.dirty} dirty · ↑${p.git.ahead} ↓${p.git.behind}` : "no git info"}</dd>
             </dl>
           </div>
           <div className="card">

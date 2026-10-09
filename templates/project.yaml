@@ -2,11 +2,14 @@ id: null
 
 name: null
 
+kind: software             # software | prototype | investigation | design | general (templates/kinds/)
+
 classification: personal   # personal | work
 
-type: null                 # web-application | backend-service | game | template | ...
+type: null                 # optional label: web-application | backend-service | game | report | ...
 
 repository:
+  mode: clone              # clone | local | none (none: no repo; work happens in projects/<id>/)
   path: null               # relative to this project directory, e.g. ../../repos/<project-id>
   remote: null
   default_branch: main

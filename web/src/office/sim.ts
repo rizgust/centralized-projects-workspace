@@ -34,6 +34,20 @@ export class Sim {
   plan: SholatPlan | null = null;
   /** decides the men's / women's side (same variant as the sprite) */
   isFemale: (a: Actor) => boolean = () => false;
+  /** actor key -> live discussion (topic, running) */
+  talks = new Map<string, { topic: string; running: boolean }>();
+
+  /** Map Office.discussions onto workers: project worker, else HQ, else the active room's, else any. */
+  setDiscussions(list: { role: string; project: string | null; topic: string; running: string | null }[], activeProject: string | null) {
+    const m = new Map<string, { topic: string; running: boolean }>();
+    for (const d of list) {
+      const tries = [d.project ? deskKey(d.project, d.role) : null, deskKey(null, d.role), activeProject ? deskKey(activeProject, d.role) : null];
+      let key = tries.find((k) => k && this.actors.has(k) && !m.has(k)) ?? null;
+      if (!key) key = [...this.actors.values()].find((a) => a.worker.role === d.role && !m.has(a.key))?.key ?? null;
+      if (key) m.set(key, { topic: d.topic, running: !!d.running });
+    }
+    this.talks = m;
+  }
   activeProject: string | null = null;
   private snapAll = false;
 
@@ -97,6 +111,11 @@ export class Sim {
     const w = this.world!;
     if (a.sholat) return a.sholat.spot;
     const desk = w.desks.get(a.key)?.seat ?? null;
+    if (this.talks.has(a.key) && w.talkSeats.length) {
+      a.idleSpot = null;
+      const keys = [...this.talks.keys()].sort();
+      return w.talkSeats[Math.max(0, keys.indexOf(a.key)) % w.talkSeats.length];
+    }
     switch (a.worker.state) {
       case "asking": {
         a.idleSpot = null;

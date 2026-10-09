@@ -21,6 +21,7 @@ interface Props {
   onRegister: () => void;
   prayer: PrayerStatus | null;
   onInbox: (questionId?: string) => void;
+  onTalk: () => void;
 }
 
 export { deskKey as stationKey } from "./world";
@@ -54,7 +55,7 @@ const HUD_H = 52; // css px reserved above the map for the HUD panels
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export function OfficeCanvas({ office, extras, focusKey, onSelect, onRegister, prayer, onInbox }: Props) {
+export function OfficeCanvas({ office, extras, focusKey, onSelect, onRegister, prayer, onInbox, onTalk }: Props) {
   const [assets, setAssets] = useState(0);
   useEffect(() => onPropsReady(() => setAssets((n) => n + 1)), []);
   useEffect(() => onAtlasReady(() => setAssets((n) => n + 1)), []);
@@ -69,6 +70,8 @@ export function OfficeCanvas({ office, extras, focusKey, onSelect, onRegister, p
       ? { name: prayer.active.name as PrayerName, start: Date.parse(prayer.active.startedAt), end: Date.parse(prayer.active.endsAt) }
       : null;
   const plan = live ?? (preview && preview.end > nowTick ? preview : null);
+  const talksRef = useRef(office.discussions ?? []);
+  talksRef.current = office.discussions ?? [];
   const activeRef = useRef<string | null>(office.project);
   activeRef.current = office.project;
   const planRef = useRef(plan);
@@ -116,7 +119,7 @@ export function OfficeCanvas({ office, extras, focusKey, onSelect, onRegister, p
 
   // ---- world (rebuilt only when the floor plan changes)
   const cols = size.w >= worldWidth(3) + 16 ? 3 : 2;
-  const sig = JSON.stringify([cols, roomsOf(office).rooms.map((r) => [r.project, r.name, r.active, r.workers.map((w) => w.role).sort()])]);
+  const sig = JSON.stringify([cols, roomsOf(office).rooms.map((r) => [r.project, r.name, r.active, r.kind, (r.roles ?? []).join(","), r.workers.map((w) => w.role).sort()])]);
   const world: World = useMemo(() => buildWorld(office, cols), [sig, assets]); // eslint-disable-line react-hooks/exhaustive-deps
   const worldRef = useRef(world);
   worldRef.current = world;
@@ -171,6 +174,7 @@ export function OfficeCanvas({ office, extras, focusKey, onSelect, onRegister, p
       const sim = simRef.current;
       sim.isFemale = (a) => variantFor(a.project, a.worker.role, styleRef.current) === "female";
       sim.activeProject = activeRef.current;
+      sim.setDiscussions(talksRef.current, activeRef.current);
       sim.setPlan(planRef.current, Date.now());
       sim.update(dt, now, reduced);
       const ctx = c.getContext("2d")!;
@@ -364,6 +368,9 @@ export function OfficeCanvas({ office, extras, focusKey, onSelect, onRegister, p
               </div>
             )}
           </div>
+          <button className="px-btn wide" onClick={onTalk}>
+            TALK TO ANALYST
+          </button>
           <button
             className="px-btn wide"
             onClick={() =>

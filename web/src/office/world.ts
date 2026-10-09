@@ -29,7 +29,7 @@ export interface NavNode extends Pt {
   id: number;
   adj: number[];
 }
-export type SpotKind = "deskA" | "deskB" | "meetTop" | "meetBottom" | "couch" | "stand" | "mat" | "wudhu" | "shoe";
+export type SpotKind = "deskA" | "deskB" | "meetTop" | "meetBottom" | "couch" | "stand" | "mat" | "wudhu" | "shoe" | "talkDesk";
 export type Chair =
   | { kind: "office" | "wood"; cx: number; top: number }
   | { kind: "part"; name: string; sx: number; sy: number; sw: number; sh: number; dx: number; dy: number };
@@ -106,6 +106,8 @@ export interface World {
   mushola: Mushola | null;
   /** queue in front of the Owner's desk for workers waiting on an answer */
   ownerQueue: Spot[];
+  /** seats with the Owner for live discussions: beside the desk first, then the couch */
+  talkSeats: Spot[];
   signature: string;
 }
 
@@ -156,6 +158,7 @@ class Builder {
   register: World["register"] = null;
   mushola: Mushola | null = null;
   ownerQueue: Spot[] = [];
+  talkSeats: Spot[] = [];
   doors: { corridor: number; x: number; inside: number }[] = [];
   constructor(public g: Ctx) {}
   node(x: number, y: number): number {
@@ -361,6 +364,170 @@ function projectRoom(b: Builder, x: number, y: number, room: OfficeRoom, hq: boo
   return inside;
 }
 
+// ------------------------------------------------------------------ rooms by project kind
+const KIND_THEME: Record<string, { floor: string; fb: P.FloorKind; wall: string; base: string }> = {
+  prototype: { floor: "office", fb: "teal", wall: "#e4ecf3", base: "#93a6b8" },
+  investigation: { floor: "wood", fb: "wood", wall: "#efe2c8", base: "#a88a63" },
+  design: { floor: "reception", fb: "sage", wall: "#f3e1ea", base: "#b892a6" },
+  general: { floor: "blue_carpet", fb: "wavy", wall: "#efe9c4", base: "#b9a77a" },
+};
+
+function roomHeader(g: Ctx, ix: number, iy: number, room: OfficeRoom, kind: string) {
+  const sign = plaque(g, ix + 169, iy + 4, room.name, room.active, 110);
+  if (room.active) {
+    rect(g, sign.x - 3, iy + 6, 2, 5, "#ffd76a");
+    rect(g, sign.x + sign.w + 1, iy + 6, 2, 5, "#ffd76a");
+    const tw = textWidth("ACTIVE") + 6;
+    rect(g, ix + 169 - tw / 2, iy + 17, tw, 8, OUT);
+    rect(g, ix + 169 - tw / 2 + 1, iy + 18, tw - 2, 6, "#e05a2b");
+    drawText(g, "ACTIVE", ix + 169 - tw / 2 + 3, iy + 19, "#ffffff");
+  }
+  // kind tag under the name sign (beside the ACTIVE tag when lit)
+  const kt = kind.toUpperCase();
+  const kw = textWidth(kt) + 6;
+  const kx = room.active ? ix + 169 + (textWidth("ACTIVE") + 6) / 2 + 4 : ix + 169 - kw / 2;
+  rect(g, kx, iy + 17, kw, 8, OUT);
+  rect(g, kx + 1, iy + 18, kw - 2, 6, "#2f8a8a");
+  drawText(g, kt, kx + 3, iy + 19, "#ffffff");
+}
+
+/** A desk_single seat (worker sits with their back to the viewer). yb = desk prop bottom. */
+function seatDesk(b: Builder, project: string | null, role: Role, cx: number, yb: number, lane: Map<number, number>, laneY: number) {
+  const g = b.g;
+  prop(g, "desk_single", cx, yb);
+  const lb = SHORT[role];
+  const lw = textWidth(lb) + 6;
+  rect(g, cx - lw / 2 - 1, yb + 2, lw + 2, 9, OUT);
+  rect(g, cx - lw / 2, yb + 3, lw, 7, "#3b3a52");
+  drawText(g, lb, cx - lw / 2 + 3, yb + 4, "#f6f2e9");
+  const dk = deskKey(project, role);
+  const sx = cx - 1;
+  const seat = b.spot({
+    id: `seat:${dk}`,
+    x: sx,
+    y: yb - 5,
+    node: lane.get(Math.round(cx))!,
+    via: [{ x: sx, y: laneY }],
+    kind: "deskB",
+    dir: "up",
+    idle: false,
+    chair: { kind: "part", name: "desk_single", sx: 20, sy: 31, sw: 25, sh: 22, dx: cx - 12, dy: yb - 22 },
+  });
+  b.desks.set(dk, { key: dk, project, role, row: "B", cx, dA: yb - 76, seat, screens: [{ x: cx - 9, y: yb - 47 }], backs: [], cards: { x: cx + 14, y: yb - 42 } });
+}
+
+function kindRoom(b: Builder, x: number, y: number, room: OfficeRoom, index: number, door: "top" | "bottom", kind: string): number {
+  const g = b.g;
+  const th = KIND_THEME[kind] ?? KIND_THEME.general;
+  const doorX = x + RW / 2;
+  const s = shell(b, x, y, RW, RH_P, th.floor, th.fb, th.wall, th.base, door, doorX, index + 11);
+  const { ix, iy, fy } = s;
+  const project = room.project;
+  b.rooms.push({ x, y, w: RW, h: RH_P, ix, iy, iw: s.iw, ih: s.ih, kind: "project", project, name: room.name, active: room.active });
+  roomHeader(g, ix, iy, room, kind);
+
+  const roles = ROLES.filter((r) => (room.roles ?? ROLES).includes(r));
+  const n = Math.max(1, roles.length);
+  const gap = n >= 4 ? 80 : 90;
+  const centers = roles.map((_, i) => Math.round(ix + 169 + (i - (n - 1) / 2) * gap));
+  const yb = fy + 96;
+  const laneF = yb + 22;
+  const laneBot = fy + 214;
+  const L = ix + 16;
+  const R = ix + 322;
+  const lf = b.lane(laneF, [L, ...centers, R]);
+  const lbot = b.lane(laneBot, [L, doorX, R]);
+  b.link(lf.get(L)!, lbot.get(L)!);
+  b.link(lf.get(R)!, lbot.get(R)!);
+  const pid = project;
+  const idle = (id: string, sx: number, sy: number, dir: Dir, talk = false) =>
+    b.spot({ id: `${id}:${pid}`, x: sx, y: sy, node: b.near(lbot, sx), via: [{ x: sx, y: laneBot }], kind: "stand", dir, idle: true, talk });
+
+  // ---- kind-specific furniture (the middle band fy+110..fy+205 keeps the side aisles clear)
+  switch (kind) {
+    case "prototype":
+      P.whiteboard(g, ix + 30, iy + 8, 60, 30, index + 4);
+      prop(g, "frame_chart", ix + 254, iy + 10, { anchor: "top" });
+      prop(g, "notice_board", ix + 300, iy + 10, { anchor: "top" });
+      prop(g, "presentation_screen", ix + 70, fy + 176);
+      // messy prototyping table: boxes, papers, a printer and a laptop on it
+      prop(g, "rug_blue", ix + 169, fy + 206);
+      prop(g, "meeting_table6", ix + 169, fy + 200);
+      prop(g, "boxes", ix + 150, fy + 168);
+      prop(g, "printer_small", ix + 192, fy + 170);
+      P.papers(g, ix + 140, fy + 176);
+      P.mug(g, ix + 205, fy + 178, "#3a86ff");
+      prop(g, "whiteboard_stand", ix + 272, fy + 170);
+      prop(g, "desk_corner", ix + 290, fy + 232);
+      prop(g, "plant_c", ix + 20, fy + 232);
+      idle("proto:board", ix + 272, fy + 186, "up", true);
+      idle("proto:screen", ix + 70, fy + 192, "up");
+      break;
+    case "investigation":
+      // a study: bookshelves, a cork board covered in pinned notes, a reading table
+      P.corkBoard(g, ix + 22, iy + 6, 56, 34, index + 2);
+      prop(g, "notice_board", ix + 100, iy + 10, { anchor: "top" });
+      prop(g, "cork_board", ix + 250, iy + 10, { anchor: "top" });
+      P.corkBoard(g, ix + 276, iy + 6, 52, 34, index + 7);
+      prop(g, "bookshelf", ix + 30, fy + 18);
+      prop(g, "bookshelf", ix + 308, fy + 18);
+      prop(g, "rug_green", ix + 120, fy + 202);
+      prop(g, "meeting_round", ix + 120, fy + 200);
+      prop(g, "desk_laptop", ix + 236, fy + 196);
+      prop(g, "armchair_set", ix + 300, fy + 196);
+      prop(g, "bookshelf", ix + 50, fy + 232);
+      prop(g, "plant_tall", ix + 322, fy + 232);
+      idle("inv:table", ix + 82, fy + 196, "right", true);
+      idle("inv:laptop", ix + 236, fy + 212, "up");
+      break;
+    case "design":
+      // a studio: display stands, a whiteboard and lots of frames
+      prop(g, "frame_landscape", ix + 40, iy + 10, { anchor: "top" });
+      P.frame(g, ix + 62, iy + 12, 18, 22, "#e87ba4", 2);
+      P.frame(g, ix + 86, iy + 16, 22, 16, "#3a86ff", 3);
+      prop(g, "frame_chart", ix + 252, iy + 10, { anchor: "top" });
+      P.frame(g, ix + 276, iy + 12, 16, 20, "#f4b942", 4);
+      P.frame(g, ix + 298, iy + 14, 24, 18, "#2a9d8f", 5);
+      prop(g, "rug_pink", ix + 169, fy + 206);
+      prop(g, "display_stand", ix + 80, fy + 190);
+      prop(g, "whiteboard_stand", ix + 169, fy + 196);
+      prop(g, "display_stand", ix + 258, fy + 190);
+      prop(g, "plant_pink_big", ix + 22, fy + 232);
+      prop(g, "plant_pink_tall", ix + 318, fy + 232);
+      prop(g, "low_cabinet", ix + 290, fy + 30);
+      idle("design:board", ix + 169, fy + 212, "up", true);
+      idle("design:display", ix + 80, fy + 206, "up");
+      break;
+    default:
+      // general: a small office
+      prop(g, "frame_landscape", ix + 50, iy + 10, { anchor: "top" });
+      prop(g, "clock", ix + 280, iy + 12, { anchor: "top" });
+      prop(g, "bookshelf", ix + 40, fy + 18);
+      prop(g, "cabinet_plant", ix + 300, fy + 22);
+      prop(g, "sofa_set", ix + 240, fy + 200);
+      prop(g, "coffee_counter", ix + 76, fy + 186);
+      prop(g, "plant_b", ix + 22, fy + 232);
+      idle("gen:coffee", ix + 76, fy + 200, "up", true);
+  }
+
+  roles.forEach((r, i) => seatDesk(b, project, r, centers[i], yb, lf, laneF));
+
+  if (door === "bottom") {
+    const inside = b.node(doorX, fy + 228);
+    b.link(inside, lbot.get(Math.round(doorX))!);
+    return inside;
+  }
+  const inside = b.node(doorX, laneF);
+  b.link(inside, b.near(lf, doorX));
+  return inside;
+}
+
+function anyRoom(b: Builder, x: number, y: number, room: OfficeRoom, hq: boolean, index: number, door: "top" | "bottom"): number {
+  const kind = room.kind ?? "software";
+  if (hq || kind === "software" || !KIND_THEME[kind]) return projectRoom(b, x, y, room, hq, index, door);
+  return kindRoom(b, x, y, room, index, door, kind);
+}
+
 export const SHORT: Record<Role, string> = {
   analyst: "ANALYST",
   "project-manager": "PM",
@@ -539,6 +706,15 @@ function ownerOffice(b: Builder, x: number, y: number, door: "top" | "bottom"): 
     b.spot({ id: `couch:owner:${lx}`, x: sx, y: sofaTop + 31, node: hub3, via: [], kind: "couch", dir: "down", idle: true, clipY: sofaTop + 27 });
   }
   b.spot({ id: "owner:visit", x: ix + 262, y: fy + 104, node: hub, via: [], kind: "stand", dir: "left", idle: true, talk: true });
+  // discussion seats: behind the desk beside the Owner (facing the viewer), then the couch
+  for (const [k, sx, side] of [
+    [0, ix + 196, ix + 222],
+    [1, ix + 128, ix + 102],
+  ] as const)
+    b.talkSeats.push(
+      b.spot({ id: `owner:talk:${k}`, x: sx, y: dTop + 34, node: hub2, via: [{ x: side, y: fy + 128 }, { x: side, y: dTop + 34 }], kind: "talkDesk", dir: "down", idle: false, clipY: dTop + 22 }),
+    );
+  for (const s of b.spots.values()) if (s.id.startsWith("couch:owner:")) b.talkSeats.push(s);
   // askers queue in front of the desk, facing up toward the Owner: a front row, then an arc behind
   const qFront = [0, -26, 26].map((d) => ({ x: ix + 162 + d, y: fy + 136 }));
   const qBack = [0, 26, 52, 78].map((d) => ({ x: ix + 150 + d, y: fy + 176 }));
@@ -784,7 +960,7 @@ export function buildWorld(office: Office, cols: number): World {
       const door: "top" | "bottom" = r === last ? "top" : "bottom";
       const corridor = door === "bottom" ? r : r - 1;
       let inside: number | null = null;
-      if (slot.kind === "project") inside = projectRoom(b, x, y, slot.room, slot.hq, slot.index, door);
+      if (slot.kind === "project") inside = anyRoom(b, x, y, slot.room, slot.hq, slot.index, door);
       else if (slot.kind === "meeting") inside = meetingRoom(b, x, y, door);
       else if (slot.kind === "owner") inside = ownerOffice(b, x, y, door);
       else if (slot.kind === "mushola") inside = musholaRoom(b, x, y, nWorkers, r > 0 ? rowY[r - 1] + rowH[r - 1] : null);
@@ -884,7 +1060,7 @@ export function buildWorld(office: Office, cols: number): World {
     prop(g, "plant_c", W - 20, cy + 30);
   }
 
-  const signature = JSON.stringify([cols, rooms.map((r) => [r.project, r.name, r.active, r.workers.map((w) => w.role).sort()]), hq]);
+  const signature = JSON.stringify([cols, rooms.map((r) => [r.project, r.name, r.active, r.kind, (r.roles ?? []).join(","), r.workers.map((w) => w.role).sort()]), hq]);
   return {
     W,
     H,
@@ -904,6 +1080,7 @@ export function buildWorld(office: Office, cols: number): World {
     register: b.register,
     mushola: b.mushola,
     ownerQueue: b.ownerQueue,
+    talkSeats: b.talkSeats,
     signature,
   };
 }

@@ -82,6 +82,7 @@ export function OfficePage() {
         onRegister={() => live.setRegisterOpen(true)}
         prayer={live.prayer}
         onInbox={(id) => live.openInbox(id)}
+        onTalk={() => live.openNewDiscussion({ role: "analyst", project: null })}
       />
 
       {hq && (
@@ -206,6 +207,11 @@ function WorkerDrawer({ sel, onClose }: { sel: StationRef | null; onClose: () =>
           <button className="btn" disabled={!run || run.status !== "running"} onClick={stop}>
             ■ Stop run
           </button>
+          {role === "analyst" && (
+            <button className="btn" onClick={() => live.openNewDiscussion({ project, role: "analyst" })}>
+              Discuss with Analyst
+            </button>
+          )}
           <button className="btn btn-primary" onClick={() => live.openLaunch({ project: project ?? undefined, role })}>
             Assign task
           </button>

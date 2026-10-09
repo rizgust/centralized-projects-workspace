@@ -50,7 +50,9 @@ Agents must preserve project decisions and progress in files so that future sess
 | Cross-project knowledge and memory | `shared/knowledge/` |
 | Reusable prompts | `prompts/` |
 | Skills | `.claude/skills/`, `.agents/skills/` (lock: `skills-lock.json`) |
+| Project kinds (software, prototype, investigation, design, general) | `templates/kinds/` |
 | Requirements, architecture, UI/UX, features, tasks, decisions, reports | `projects/<project-id>/` |
+| Discussions with a role (brainstorming, integration ideas) | `projects/<id>/discussions/`, `discussions/` (workspace-wide) |
 | Product source code | `repos/<project-id>/` (gitignored) |
 | Session state, locks, agent messages (temporary, gitignored) | `runtime/` |
 | Tooling (`pcctl`) | `cmd/`, `internal/`, `go.mod` |

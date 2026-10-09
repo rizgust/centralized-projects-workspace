@@ -138,6 +138,9 @@ func (q *questionStore) hasFor(runID string) bool {
 // autoQuestion turns a run that ended on a question into an owner question.
 func (q *questionStore) autoQuestion(run Run, finalText string) {
 	text := strings.TrimSpace(finalText)
+	if run.DiscussionID != nil { // questions are normal in a conversation
+		return
+	}
 	if text == "" || run.Status != "succeeded" || q.hasFor(run.ID) {
 		return
 	}

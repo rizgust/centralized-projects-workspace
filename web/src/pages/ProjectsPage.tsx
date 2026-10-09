@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import type { ProjectSummary } from "../api/types";
 import { TASK_STATUSES } from "../api/types";
 import { useLive } from "../store";
-import { Empty, HealthBadge, Progress, Tabs } from "../components/ui";
+import { Empty, HealthBadge, KindBadge, Progress, Tabs } from "../components/ui";
 import { STATUS_LABEL, STATUS_SYMBOL } from "../fmt";
 
 export function ProjectsPage() {
@@ -66,7 +66,7 @@ export function ProjectsPage() {
                   <td>{p.type}</td>
                   <td>{p.classification}</td>
                   <td>
-                    <HealthBadge health={p.health} />
+                    <HealthBadge health={p.health} /> <KindBadge kind={p.kind} />
                   </td>
                   <td style={{ minWidth: 180 }}>
                     <Progress value={p.weightDone} max={p.weightTotal} label={`${p.name} progress`} />
@@ -74,7 +74,7 @@ export function ProjectsPage() {
                   <td>
                     <GitLine p={p} />
                   </td>
-                  <td>{p.repoExists ? "✓ present" : "× missing"}</td>
+                  <td>{p.repoMode === "none" ? "No repository" : p.repoExists ? "✓ present" : "× missing"}</td>
                   <td className="nowrap">
                     <button className="btn btn-sm" disabled={p.active} onClick={() => void live.activate(p.id)}>
                       Activate
@@ -94,6 +94,7 @@ export function ProjectsPage() {
 }
 
 function GitLine({ p }: { p: ProjectSummary }) {
+  if (p.repoMode === "none") return <span className="muted">No repository</span>;
   if (!p.git) return <span className="muted">no git info</span>;
   return (
     <span className="git-line">
@@ -122,8 +123,13 @@ function ProjectCard({ p, onActivate, onTasks }: { p: ProjectSummary; onActivate
         {p.active && <span className="badge badge-active">Active</span>}
       </header>
       <div className="row-wrap">
+        <KindBadge kind={p.kind} />
         <HealthBadge health={p.health} />
-        <span className={`badge ${p.repoExists ? "" : "badge-warn"}`}>{p.repoExists ? "✓ repo present" : "× repo missing"}</span>
+        {p.repoMode === "none" ? (
+          <span className="badge">No repository</span>
+        ) : (
+          <span className={`badge ${p.repoExists ? "" : "badge-warn"}`}>{p.repoExists ? `✓ ${p.repoMode === "local" ? "local repo" : "repo present"}` : "× repo missing"}</span>
+        )}
       </div>
       <Progress value={p.weightDone} max={p.weightTotal} label={`${p.name} progress`} />
       <ul className="count-row" aria-label={`${total} tasks by status`}>

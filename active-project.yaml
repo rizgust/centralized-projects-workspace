@@ -1,6 +1,6 @@
-active_project: null
-project_path: null
-repo_path: null
+active_project: test-01
+project_path: projects/test-01
+repo_path: repos/test-01
 
 session_policy:
   allow_other_projects: false

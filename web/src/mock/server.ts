@@ -7,6 +7,11 @@ import type {
   PrayerName,
   PrayerStatus,
   Question,
+  Discussion,
+  DiscussionSummary,
+  DiscussionTurn,
+  NewDiscussionBody,
+  Role as RoleT,
   Overview,
   ProjectDetail,
   ProjectSummary,
@@ -33,6 +38,7 @@ import {
   PROJECTS,
   PROJECT_SHARE,
   ROLE_INFO,
+  KINDS,
   RUN_SCRIPT,
   costOf,
   iso,
@@ -110,6 +116,278 @@ const questions: Question[] = [
   },
 ];
 const emitQuestions = () => emit("questions", structuredClone(questions));
+
+// ------------------------------------------------------------------ discussions
+const MINUTE = 60_000;
+const NL = "\n";
+const modeOf = (req: RegisterProjectBody) => req.repo || KINDS.find((k) => k.name === (req.kind || "software"))?.repo || "clone";
+const turn = (who: "owner" | "agent", ago: number, text: string, wrapup = false): DiscussionTurn => ({
+  who,
+  role: who === "owner" ? "owner" : "analyst",
+  at: iso(START - ago * MINUTE),
+  text,
+  runId: null,
+  wrapup,
+  error: false,
+});
+const discussions: Discussion[] = [
+  {
+    id: "d-01",
+    topic: "Integration ideas across our projects",
+    project: null,
+    role: "analyst",
+    sessionId: "d0c5-0001",
+    status: "open",
+    budgetUsd: 1,
+    model: null,
+    createdAt: iso(START - 40 * MINUTE),
+    updatedAt: iso(START - 3 * MINUTE),
+    costUsd: 0.62,
+    wrappedUp: false,
+    path: "runtime/discussions/d-01.yaml",
+    running: null,
+    turns: [
+      turn("owner", 40, "Could Atlas Web and Pixel Quest share anything? Accounts, payments, analytics?"),
+      turn(
+        "agent",
+        38,
+        [
+          "Three realistic overlaps:",
+          "",
+          "1. **Accounts**: both need sign-in. A shared auth service would let one login work in the web app and the game launcher.",
+          "2. **Payments**: Vendor Research is already comparing providers; Atlas Web's Pro plan and Pixel Quest's cosmetics could use the same checkout.",
+          "3. **Usage analytics**: the credit counter in Atlas Web (TASK-006) is really a generic event counter.",
+          "",
+          "Of these, *payments* has the best effort-to-value ratio right now.",
+        ].join(NL),
+      ),
+      turn("owner", 6, "Go deeper on payments. What would sharing it cost us?"),
+      turn(
+        "agent",
+        3,
+        [
+          "Rough sizing, assuming one provider for both:",
+          "",
+          "| Piece | Effort |",
+          "|---|---|",
+          "| Provider SDK wrapper (Go) | 2-3 days |",
+          "| Webhook receiver + ledger | 3 days |",
+          "| Atlas Web checkout UI | 2 days |",
+          "| Pixel Quest store hook | 2 days |",
+          "",
+          "The risk is IDR payouts: only two of the three shortlisted providers settle daily.",
+        ].join(NL),
+      ),
+    ],
+  },
+  {
+    id: "d-02",
+    topic: "Receipt OCR vendor options",
+    project: "atlas-web",
+    role: "analyst",
+    sessionId: "d0c5-0002",
+    status: "closed",
+    budgetUsd: 1,
+    model: null,
+    createdAt: iso(START - 2 * 24 * 60 * MINUTE),
+    updatedAt: iso(START - 47 * 60 * MINUTE),
+    costUsd: 0.91,
+    wrappedUp: true,
+    path: "projects/atlas-web/discussions/d-02.md",
+    running: null,
+    turns: [
+      turn("owner", 2900, "Which OCR option should receipt parsing use?"),
+      turn("agent", 2895, "A hosted OCR model is cheapest to start; on-device parsing only pays off above roughly 50k receipts a month."),
+      turn("owner", 2840, "OK, wrap this up."),
+      turn(
+        "agent",
+        2830,
+        [
+          "## Summary",
+          "Start with a hosted OCR model behind a small adapter so it can be swapped later.",
+          "",
+          "## Ideas",
+          "- Cache parsed receipts by image hash",
+          "- Let users correct fields; feed corrections back as eval data",
+          "",
+          "## Decisions",
+          "- Hosted OCR for v1 (ADR-003 to be accepted)",
+          "",
+          "## Next steps",
+          "- [backend] Add an OCR adapter interface with one hosted implementation (atlas-web)",
+          "- [frontend] Build the receipt field correction form (atlas-web)",
+          "- [analyst] Collect 50 real receipts as an evaluation set (atlas-web)",
+          "",
+          "## Open questions",
+          "- What accuracy is good enough to skip manual review?",
+        ].join(NL),
+        true,
+      ),
+    ],
+  },
+];
+const summaryOf = (d: Discussion): DiscussionSummary => {
+  const { turns, ...rest } = d;
+  return { ...rest, turns: turns.length, lastMessage: turns[turns.length - 1]?.text.slice(0, 140) ?? "" };
+};
+const emitDiscussions = () => emit("discussions", discussions.map(summaryOf).sort((x, y) => y.updatedAt.localeCompare(x.updatedAt)));
+
+const CANNED = [
+  [
+    "Good question. Looking across the workspace:",
+    "",
+    "- **Atlas Web** already has a credit counter we could generalise",
+    "- **Vendor Research** has the provider shortlist",
+    "",
+    "I'd start with a one-page integration brief so the PM can split it into tasks.",
+  ].join(NL),
+  [
+    "Here's how I'd sequence it:",
+    "",
+    "1. Agree the shared contract (events + webhooks)",
+    "2. Build the Go wrapper behind an interface",
+    "3. Wire Atlas Web first, Pixel Quest second",
+    "",
+    "> Risk: payouts in IDR. Confirm settlement times before committing.",
+  ].join(NL),
+];
+const WRAPUP = [
+  "## Summary",
+  "Share one payment provider across Atlas Web and Pixel Quest through a small Go wrapper; pick the provider once Vendor Research finishes.",
+  "",
+  "## Ideas",
+  "- Shared auth later, after payments land",
+  "- Reuse the credit counter as a generic usage meter",
+  "",
+  "## Decisions",
+  "- Payments first; accounts and analytics deferred",
+  "",
+  "## Next steps",
+  "- [analyst] Write the payments integration brief (vendor-research)",
+  "- [backend] Prototype the provider SDK wrapper with webhooks (atlas-web)",
+  "- [project-manager] Plan the checkout milestone (atlas-web)",
+  "",
+  "## Open questions",
+  "- Which provider settles IDR daily at our volume?",
+].join(NL);
+
+function discussionReply(d: Discussion, text: string, wrapup: boolean): Run {
+  const id = `run-dc${Math.random().toString(16).slice(2, 6)}`;
+  const run: Run = {
+    id,
+    project: d.project ?? "workspace",
+    role: d.role,
+    taskId: null,
+    prompt: text,
+    status: "running",
+    permissionMode: "acceptEdits",
+    budgetUsd: d.budgetUsd,
+    model: d.model,
+    startedAt: iso(now()),
+    endedAt: null,
+    sessionId: d.sessionId ?? crypto.randomUUID(),
+    pid: 40000 + Math.floor(Math.random() * 9000),
+    costUsd: null,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    numTurns: 0,
+    lastActivity: iso(now()),
+    lastText: "Thinking",
+    error: null,
+    discussionId: d.id,
+  };
+  db.events.set(id, []);
+  d.running = id;
+  const steps: [number, string, string][] = [
+    [500, "Read", "templates/kinds/investigation.md"],
+    [1500, "Read", "projects/vendor-research/STATUS.md"],
+    [2700, "Grep", 'pattern: "payment" path: projects/'],
+  ];
+  for (const [ms, tool, arg] of steps)
+    setTimeout(() => {
+      const list = db.events.get(id) ?? [];
+      const ev: RunEvent = { seq: list.length + 1, ts: iso(now()), kind: "tool_use", tool, text: arg };
+      list.push(ev);
+      db.events.set(id, list);
+      emit("run-event", { runId: id, event: ev });
+    }, ms);
+  setTimeout(() => {
+    const n = d.turns.filter((t) => t.who === "agent").length;
+    d.turns.push({ who: "agent", role: d.role, at: iso(now()), text: wrapup ? WRAPUP : CANNED[n % CANNED.length], runId: id, wrapup, error: false });
+    d.running = null;
+    d.costUsd = Math.round((d.costUsd + 0.17) * 100) / 100;
+    d.updatedAt = iso(now());
+    if (wrapup) d.wrappedUp = true;
+    emitDiscussions();
+    emitOffice();
+  }, 4200);
+  return run;
+}
+
+function discussionRoute(method: string, id: string | undefined, action: string | undefined, B: Record<string, unknown>): unknown {
+  if (method === "GET" && !id) return discussions.map(summaryOf).sort((x, y) => y.updatedAt.localeCompare(x.updatedAt));
+  const hold = (override: unknown) => {
+    if (prayerState.active && !override) {
+      const n = prayerState.active.name;
+      throw new ApiError(`Sholat ${n.charAt(0).toUpperCase() + n.slice(1)} in progress; messages are held until ${hhmm(Date.parse(prayerState.active.endsAt))}`, 423);
+    }
+  };
+  if (method === "POST" && !id) {
+    const req = B as unknown as NewDiscussionBody;
+    if (!req.topic?.trim()) throw new ApiError("topic is required", 400);
+    if (req.message?.trim()) hold(req.override);
+    const n = discussions.length + 1;
+    const d: Discussion = {
+      id: `d-${String(n).padStart(2, "0")}`,
+      topic: req.topic.trim(),
+      project: req.project ?? null,
+      role: req.role ?? "analyst",
+      sessionId: null,
+      status: "open",
+      budgetUsd: req.budgetUsd ?? 1,
+      model: req.model ?? null,
+      createdAt: iso(now()),
+      updatedAt: iso(now()),
+      costUsd: 0,
+      wrappedUp: false,
+      path: `runtime/discussions/d-${n}.yaml`,
+      running: null,
+      turns: [],
+    };
+    discussions.unshift(d);
+    let run: Run | null = null;
+    if (req.message?.trim()) {
+      d.turns.push({ who: "owner", role: "owner", at: iso(now()), text: req.message.trim(), runId: null, wrapup: false, error: false });
+      run = discussionReply(d, req.message, false);
+    }
+    emitDiscussions();
+    emitOffice();
+    return { discussion: d, run };
+  }
+  const d = discussions.find((x) => x.id === id);
+  if (!d) throw new ApiError(`discussion ${id} not found`, 404);
+  if (method === "GET" && !action) return d;
+  if (method === "POST" && (action === "close" || action === "reopen")) {
+    d.status = action === "close" ? "closed" : "open";
+    d.updatedAt = iso(now());
+    emitDiscussions();
+    emitOffice();
+    return d;
+  }
+  if (method === "POST" && (action === "messages" || action === "wrapup")) {
+    if (d.running) throw new ApiError("the agent is still answering", 400);
+    hold(B.override);
+    const text = action === "wrapup" ? "Please wrap up this discussion." : String(B.text ?? "").trim();
+    if (!text) throw new ApiError("text is required", 400);
+    if (d.status === "closed") d.status = "open";
+    d.turns.push({ who: "owner", role: "owner", at: iso(now()), text, runId: null, wrapup: false, error: false });
+    d.updatedAt = iso(now());
+    const run = discussionReply(d, text, action === "wrapup");
+    emitDiscussions();
+    emitOffice();
+    return { discussion: d, run };
+  }
+  throw new ApiError(`mock: no discussion route ${method} ${action}`, 404);
+}
 
 // ------------------------------------------------------------------ prayer fixture
 // Times are relative to "now": the next adhan is ~4 minutes away. `?sholat=now` opens a
@@ -200,6 +478,10 @@ function round1(n: number) {
 }
 
 // ------------------------------------------------------------------ derived views
+function rolesOf(p: ProjectSeed): RoleT[] {
+  return KINDS.find((k) => k.name === p.kind)?.roles ?? ROLES;
+}
+
 function summary(p: ProjectSeed): ProjectSummary {
   const tasks = db.tasks.filter((t) => t.project === p.id);
   const taskCounts = Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
@@ -226,6 +508,9 @@ function summary(p: ProjectSeed): ProjectSummary {
     weightDone,
     weightTotal,
     git: p.git,
+    kind: p.kind,
+    repoMode: p.repoMode,
+    roles: rolesOf(p),
   };
 }
 
@@ -267,9 +552,11 @@ function office(): Office {
     project: p.id,
     name: p.name,
     active: db.active === p.id,
-    workers: ROLES.map((r) => workerFor(p.id, r)),
+    kind: p.kind,
+    roles: rolesOf(p),
+    workers: rolesOf(p).map((r) => workerFor(p.id, r)),
   }));
-  return { project: db.active, rooms, hq: ROLES.map((r) => workerFor(null, r)), interactiveSessions: db.interactive, openQuestions: questions.filter((q) => q.status === "open").length };
+  return { project: db.active, rooms, hq: ROLES.map((r) => workerFor(null, r)), interactiveSessions: db.interactive, openQuestions: questions.filter((q) => q.status === "open").length, discussions: discussions.filter((d) => d.status === "open").map((d) => ({ id: d.id, role: d.role, project: d.project, topic: d.topic, running: d.running })) };
 }
 
 function addRow(a: UsageRow, b: UsageRow): UsageRow {
@@ -488,6 +775,7 @@ export function mockEvents(onEvent: SseHandler, onStatus: (s: ConnStatus) => voi
     emitOffice();
     onEvent("prayer", prayer());
     onEvent("questions", structuredClone(questions));
+    onEvent("discussions", discussions.map(summaryOf));
   }, 250);
   return () => {
     clearTimeout(t);
@@ -517,6 +805,8 @@ function route(method: string, p: string[], q: URLSearchParams, body: unknown): 
   const B = (body ?? {}) as Record<string, unknown>;
   if (method === "GET" && a === "overview") return overview();
   if (method === "GET" && a === "roles") return ROLE_INFO;
+  if (method === "GET" && a === "kinds") return KINDS;
+  if (a === "discussions") return discussionRoute(method, b, c, B);
   if (method === "GET" && a === "office") return office();
   if (method === "GET" && a === "sessions") return [...db.sessions].sort((x, y) => y.lastActivity.localeCompare(x.lastActivity));
   if (method === "GET" && a === "usage") return usage(Number(q.get("days") ?? 30));
@@ -571,18 +861,21 @@ function route(method: string, p: string[], q: URLSearchParams, body: unknown): 
     if (method === "POST" && !b) {
       const req = B as unknown as RegisterProjectBody;
       if (!req.id || !/^[a-z0-9][a-z0-9-]*$/.test(req.id)) throw new ApiError("id must be lowercase letters, digits and dashes", 400);
+      if (modeOf(req) === "clone" && !req.remote?.trim()) throw new ApiError("remote is required for repo mode clone", 400);
       if (db.projects.some((x) => x.id === req.id)) throw new ApiError(`project ${req.id} already registered`, 409);
       const seed: ProjectSeed = {
         id: req.id,
         name: req.name || req.id,
         type: req.type,
         classification: req.classification,
-        remote: req.remote,
+        remote: req.remote ?? "",
         defaultBranch: req.defaultBranch || "main",
         workingBranch: req.workingBranch || req.defaultBranch || "main",
         health: "unknown",
-        repoExists: !!req.clone,
-        git: req.clone ? { branch: req.defaultBranch || "main", dirty: 0, ahead: 0, behind: 0 } : null,
+        kind: req.kind || "software",
+        repoMode: modeOf(req),
+        repoExists: !!req.clone && modeOf(req) !== "none",
+        git: req.clone && modeOf(req) !== "none" ? { branch: req.defaultBranch || "main", dirty: 0, ahead: 0, behind: 0 } : null,
         features: [],
         decisions: [],
         projectMd: `# ${req.name || req.id}\n\nNewly registered project.\n`,

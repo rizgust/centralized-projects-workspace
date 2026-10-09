@@ -24,6 +24,8 @@ type Worker struct {
 type Room struct {
 	Project string   `json:"project"`
 	Name    string   `json:"name"`
+	Kind    string   `json:"kind"`  // software | prototype | investigation | design | general
+	Roles   []string `json:"roles"` // roles involved in this kind of project
 	Active  bool     `json:"active"`
 	Workers []Worker `json:"workers"`
 }
@@ -34,6 +36,17 @@ type Office struct {
 	HQ                  []Worker `json:"hq"`
 	InteractiveSessions int      `json:"interactiveSessions"`
 	OpenQuestions       int      `json:"openQuestions"`
+	// discussions with the Owner that are live (a turn is running, or activity in the
+	// last 20 minutes): that role's worker sits with the Owner in the Owner's room
+	Discussions []ActiveDiscussion `json:"discussions"`
+}
+
+type ActiveDiscussion struct {
+	ID      string  `json:"id"`
+	Role    string  `json:"role"`
+	Project *string `json:"project"`
+	Topic   string  `json:"topic"`
+	Running bool    `json:"running"`
 }
 
 func strp(s string) *string { return &s }
@@ -44,7 +57,7 @@ func strp(s string) *string { return &s }
 func buildOffice(root string, cfg workspace.Config, runs []Run, questions []Question, interactive int) Office {
 	roles := workspace.Roles(root)
 	active := workspace.ActiveProject(root)
-	o := Office{Rooms: []Room{}, HQ: []Worker{}, InteractiveSessions: interactive, OpenQuestions: len(questions)}
+	o := Office{Rooms: []Room{}, HQ: []Worker{}, InteractiveSessions: interactive, OpenQuestions: len(questions), Discussions: []ActiveDiscussion{}}
 	if active != "" {
 		o.Project = strp(active)
 	}
@@ -54,7 +67,10 @@ func buildOffice(root string, cfg workspace.Config, runs []Run, questions []Ques
 		if name == "" {
 			name = id
 		}
-		room := Room{Project: id, Name: name, Active: id == active}
+		room := Room{Project: id, Name: name, Active: id == active, Kind: cfg.Projects[id].KindOf(), Roles: []string{}}
+		if k, err := workspace.LoadKind(root, room.Kind); err == nil {
+			room.Roles = k.Roles
+		}
 		for _, r := range roles {
 			room.Workers = append(room.Workers, workerFor(r, id, tasks, runs, questions))
 		}

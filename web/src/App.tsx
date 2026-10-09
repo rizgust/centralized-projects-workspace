@@ -6,6 +6,8 @@ import { Toasts } from "./components/ui";
 import { LaunchDialog } from "./components/LaunchDialog";
 import { RegisterDialog } from "./components/RegisterDialog";
 import { InboxDrawer } from "./components/InboxDrawer";
+import { NewDiscussionDialog } from "./components/NewDiscussionDialog";
+import { DiscussPage } from "./pages/DiscussPage";
 import { OfficePage } from "./pages/OfficePage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { ProjectDetailPage } from "./pages/ProjectDetailPage";
@@ -20,6 +22,7 @@ const NAV = [
   { to: "/projects", label: "Projects", icon: "▤" },
   { to: "/tasks", label: "Tasks", icon: "☰" },
   { to: "/agents", label: "Agents", icon: "◉" },
+  { to: "/discuss", label: "Discuss", icon: "✎" },
   { to: "/usage", label: "Usage", icon: "▥" },
   { to: "/system", label: "System", icon: "◈" },
 ];
@@ -70,6 +73,11 @@ export function App() {
                 {n.icon}
               </span>
               {n.label}
+              {n.to === "/discuss" && live.discussions.some((d) => d.running) && (
+                <span className="nav-count" aria-label="a reply is coming">
+                  …
+                </span>
+              )}
               {n.to === "/agents" && running > 0 && (
                 <span className="nav-count" aria-label={`${running} running`}>
                   {running}
@@ -125,6 +133,7 @@ export function App() {
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/agents" element={<AgentsPage />} />
             <Route path="/agents/runs/:id" element={<RunDetailPage />} />
+            <Route path="/discuss" element={<DiscussPage />} />
             <Route path="/usage" element={<UsagePage />} />
             <Route path="/system" element={<SystemPage />} />
             <Route path="*" element={<p>Not found.</p>} />
@@ -134,6 +143,7 @@ export function App() {
       <LaunchDialog />
       <RegisterDialog />
       <InboxDrawer />
+      <NewDiscussionDialog />
       <Toasts />
     </div>
   );

@@ -1,0 +1,7 @@
+description: Anything else, such as an errand, a document, a migration or an event.
+repo: none
+roles: [project-manager, analyst]
+deliverable: Whatever brief.md defines as done.
+agent_hint: >-
+  This is a general project without a code repository. Work in the project folder:
+  brief.md defines the goal and what done means. Keep notes.md current.

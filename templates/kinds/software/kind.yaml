@@ -1,0 +1,7 @@
+description: An existing product codebase, developed with the full BOOTSTRAP.md structure.
+repo: clone
+roles: [project-manager, analyst, uiux, frontend, backend, infra]
+deliverable: Working, tested changes in the repository, tracked as tasks.
+agent_hint: >-
+  This is a software project. Code lives in the repository. Follow the git policy, and
+  run the project's tests, lint and build before handing over for review.

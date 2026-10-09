@@ -100,6 +100,7 @@ export function TasksPage() {
             {live.projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
+                {p.kind ? ` · ${p.kind}` : ""}
                 {p.active ? " (active)" : ""}
               </option>
             ))}
@@ -367,18 +368,20 @@ function TaskDrawer({
   );
 }
 
-function CreateTaskDialog({
+export function CreateTaskDialog({
   open,
   project,
   features,
   onClose,
   onCreated,
+  prefill,
 }: {
   open: boolean;
   project: string;
   features: string[];
   onClose: () => void;
   onCreated: (t: Task) => void;
+  prefill?: { title?: string; owner?: string; description?: string };
 }) {
   const empty = { title: "", owner: "frontend", weight: 2, priority: "medium", risk: "low", feature: "", description: "", requirements: "", acceptance: "", status: "backlog" as TaskStatus };
   const [f, setF] = useState(empty);
@@ -386,7 +389,7 @@ function CreateTaskDialog({
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     if (open) {
-      setF(empty);
+      setF({ ...empty, title: prefill?.title ?? "", owner: prefill?.owner ?? empty.owner, description: prefill?.description ?? "", status: prefill ? "ready" : "backlog" });
       setErr(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

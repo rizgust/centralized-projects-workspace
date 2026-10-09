@@ -96,6 +96,19 @@ export function HealthBadge({ health }: { health: string }) {
   );
 }
 
+export function KindBadge({ kind }: { kind?: string }) {
+  if (!kind) return null;
+  const icon: Record<string, string> = { software: "</>", prototype: "⚙", investigation: "?", design: "✎", general: "▤" };
+  return (
+    <span className="badge badge-kind" title={`${kind} project`}>
+      <span aria-hidden="true" className="sym">
+        {icon[kind] ?? "◆"}
+      </span>
+      {kind}
+    </span>
+  );
+}
+
 export function Progress({ value, max, label }: { value: number; max: number; label: string }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
   return (

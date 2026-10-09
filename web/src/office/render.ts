@@ -157,7 +157,7 @@ export function drawFrame(ctx: Ctx, w: World, sim: Sim, ex: LiveExtras, o: Frame
     if (o.hover === a.key || o.focus === a.key) {
       for (let k = 0; k < 3; k++) rect(ctx, x - 3 + k, box.y - 6 + k, 7 - k * 2, 1, "#ffffff");
     }
-    bubbles.push(() => bubble(ctx, a, x, box.y, t, ex.recent.get(a.key)));
+    bubbles.push(() => bubble(ctx, sim, a, x, box.y, t, ex.recent.get(a.key)));
   };
 
   // ---- cubicle islands: one item per (A,B) pair, so desk A, partition and B monitors stack right
@@ -169,6 +169,19 @@ export function drawFrame(ctx: Ctx, w: World, sim: Sim, ex: LiveExtras, o: Frame
     islands.set(k, isl);
   }
   for (const { A, B } of islands.values()) {
+    if (!A && B) {
+      // front-row-only desk (kind rooms): just the screen and the card stack
+      const b = sim.actors.get(B.key);
+      const bs = seatedOn(b, B);
+      items.push({
+        y: B.seat.y - 30,
+        draw: () => {
+          for (const [i, sc] of B.screens.entries()) screen(ctx, sc.x, sc.y, bs ? b!.worker.state : undefined, t, B.cx + i * 3, 18, 9);
+          cards(ctx, B, b);
+        },
+      });
+      continue;
+    }
     if (!A) continue;
     const a = sim.actors.get(A.key);
     const seated = seatedOn(a, A);
@@ -229,6 +242,16 @@ export function drawFrame(ctx: Ctx, w: World, sim: Sim, ex: LiveExtras, o: Frame
       sortY = sp.y - 12;
     }
     if (sp?.kind === "couch") clipY = sp.clipY;
+    const talk = sim.talks.get(a.key);
+    if (sp?.kind === "talkDesk") {
+      clipY = sp.clipY;
+      sortY = sp.y - 12;
+    }
+    if (talk && sp && !a.sholat && (sp.kind === "talkDesk" || sp.kind === "couch")) {
+      pi.pose = sp.kind === "couch" ? "couch" : "stand";
+      pi.dir = "down";
+      pi.atlasPose = talk.running ? "talk" : undefined;
+    }
     const sh = a.sholat && sp && sp === a.sholat.spot ? a.sholat : null;
     if (sh) {
       clipY = undefined;
@@ -292,7 +315,7 @@ export function drawFrame(ctx: Ctx, w: World, sim: Sim, ex: LiveExtras, o: Frame
           ctx.fillStyle = gr;
           ctx.fillRect(L.x - 14, L.y - 20, 54, 46);
         }
-        if (live) bubbles.push(() => textBubble(ctx, ow.x + 14, ow.y - 50, `${ex.interactive} LIVE`, "normal"));
+        if (live) bubbles.push(() => textBubble(ctx, ow.x - 46, ow.y - 50, `${ex.interactive} LIVE`, "normal"));
         hits.push({ key: "__owner", x: ow.x - 14, y: ow.y - 40, w: 28, h: 30 });
         if (ex.openQuestions > 0)
           bubbles.push(() => {
@@ -374,10 +397,21 @@ function screen(ctx: Ctx, x: number, y: number, state: string | undefined, t: nu
   }
 }
 
-function bubble(ctx: Ctx, a: Actor, x: number, top: number, t: number, recent: "done" | "sweat" | undefined) {
+function bubble(ctx: Ctx, sim: Sim, a: Actor, x: number, top: number, t: number, recent: "done" | "sweat" | undefined) {
   const w = a.worker;
   const atSpot = !a.path.length && !!a.at;
   const icon = (name: IconName) => drawIcon(ctx, name, x + 2, top - 1);
+  if (a.sholat) {
+    if (w.runId || w.state === "working") pauseBadge(ctx, x + 6, top - 12);
+    return;
+  }
+  const talk = sim.talks.get(a.key);
+  if (talk && atSpot) {
+    // topic to the right of the speaker; typing dots above while the reply is running
+    textBubble(ctx, x + 8, top - 13, fitText(talk.topic.toUpperCase(), 96), "soft");
+    if (talk.running) textBubble(ctx, x - 4, top - 26, ".".repeat(1 + (Math.floor(t / 350) % 3)), "normal");
+    return;
+  }
   if (a.sholat) {
     // the agent run keeps going server-side; show it as paused here
     if (w.runId || w.state === "working") pauseBadge(ctx, x + 6, top - 12);

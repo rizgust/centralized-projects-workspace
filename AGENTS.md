@@ -93,11 +93,44 @@ Owner asks.
 6. Load the new project's context.
 7. Do not carry project-specific assumptions into the new project.
 
+## Project kinds
+
+Not every project is software. Each project has a `kind` (`templates/kinds/`):
+
+| Kind | Repo | Deliverable |
+|---|---|---|
+| `software` | clone a remote | tested changes in the repository |
+| `prototype` | local git repo | a runnable prototype that demonstrates `brief.md` |
+| `investigation` | none | `report.md`: a sourced answer with confidence |
+| `design` | none | flows, screens and specs under `uiux/` |
+| `general` | none | whatever `brief.md` defines |
+
+With no repository, work in `projects/<id>/`; the git and worktree rules apply only when
+there is a repository. Only the roles listed in the kind are involved by default. Use the
+kind's files (`brief.md`, `report.md`, ...) instead of inventing a structure.
+
+## Discussions
+
+The Owner can also just talk with a role, the Analyst by default, to brainstorm, explore
+options or find integration possibilities. A discussion is not a task:
+
+- It runs in plan (read-only) mode, and every message resumes one Claude session.
+- A project discussion stays inside that project. A workspace discussion may read every
+  project's knowledge and repository, which is what finding integrations needs; this is
+  the one standing exception to rule 2, and it is read-only.
+- The transcript is kept at `projects/<id>/discussions/` or `discussions/` (workspace).
+- On "wrap up", answer with Summary, Ideas, Decisions, Next steps
+  (`- [role] action (project)`) and Open questions. The Owner turns next steps into tasks
+  or decisions; a discussion never changes files itself.
+
 ## Adding a project
 
-1. Add it to `workspace.yaml` (id, type, classification, `repo_path: repos/<id>`, remote).
-2. Run `pcctl init` to clone it into `repos/<id>`, and create `projects/<id>/`
-   with the structure in `BOOTSTRAP.md` §5, starting from `templates/project.yaml`.
+1. Register it from the dashboard (Projects → Register), or add it to `workspace.yaml`
+   (id, name, kind, classification, `repo: clone|local|none`, and for repos `repo_path:
+   repos/<id>` and `remote`) and create `projects/<id>/` from `templates/kinds/_common` +
+   `templates/kinds/<kind>`.
+2. Run `pcctl init`: it clones `clone` repos, runs `git init` for `local` ones, and skips
+   `none`.
 3. Run the Analyst with `prompts/register-project.md`.
 4. Do not make it active unless the Owner asks.
 

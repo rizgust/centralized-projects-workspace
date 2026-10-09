@@ -21,7 +21,18 @@ operating_model:
 #     remote: git@github.com:<org>/<repo>.git
 #     default_branch: main
 #     working_branch: null
-projects: {}
+projects:
+  test-01:
+    name: test-01
+    kind: prototype
+    classification: personal
+    type: prototype
+    project_path: projects/test-01
+    repo: local
+    repo_path: repos/test-01
+    remote: null
+    default_branch: main
+    working_branch: null
 
 # Sholat times for the dashboard: virtual workers go to wudhu and the mushola at each
 # of the five daily prayers, and new agent launches are held for window_min minutes
@@ -34,10 +45,10 @@ prayer:
   timezone: Asia/Jakarta
   fajr_angle: 20
   isha_angle: 18
-  asr_factor: 1          # 1 = Syafi'i, 2 = Hanafi
+  asr_factor: 1 # 1 = Syafi'i, 2 = Hanafi
   elevation_m: 0
   ihtiyat_min: 2
-  window_min: 20         # wudhu + sholat + walking back
+  window_min: 20 # wudhu + sholat + walking back
   hold_launches: true
 
 policies:

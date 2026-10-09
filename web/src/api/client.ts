@@ -4,6 +4,10 @@ import type {
   Overview,
   PrayerStatus,
   Question,
+  KindInfo,
+  Discussion,
+  DiscussionSummary,
+  NewDiscussionBody,
   PatchTaskBody,
   ProjectDetail,
   ProjectSummary,
@@ -123,6 +127,15 @@ export const api = {
   questions: () => request<Question[]>("GET", "/api/questions"),
   answerQuestion: (id: string, b: { answer: string; resume?: boolean; override?: boolean }) =>
     request<{ question: Question; run: Run | null }>("POST", `/api/questions/${enc(id)}/answer`, b),
+  kinds: () => request<KindInfo[]>("GET", "/api/kinds"),
+  discussions: () => request<DiscussionSummary[]>("GET", "/api/discussions"),
+  discussion: (id: string) => request<Discussion>("GET", `/api/discussions/${enc(id)}`),
+  newDiscussion: (b: NewDiscussionBody) => request<{ discussion: Discussion; run: Run | null }>("POST", "/api/discussions", b),
+  sendMessage: (id: string, text: string, override?: boolean) =>
+    request<{ discussion: Discussion; run: Run | null }>("POST", `/api/discussions/${enc(id)}/messages`, { text, override: override || undefined }),
+  wrapup: (id: string, override?: boolean) => request<{ discussion: Discussion; run: Run | null }>("POST", `/api/discussions/${enc(id)}/wrapup`, { override: override || undefined }),
+  closeDiscussion: (id: string) => request<Discussion>("POST", `/api/discussions/${enc(id)}/close`),
+  reopenDiscussion: (id: string) => request<Discussion>("POST", `/api/discussions/${enc(id)}/reopen`),
   dismissQuestion: (id: string) => request<Question>("POST", `/api/questions/${enc(id)}/dismiss`),
 };
 
@@ -131,7 +144,7 @@ export const api = {
 export type ConnStatus = "connecting" | "open" | "reconnecting";
 export type SseHandler = <K extends SseEventName>(name: K, data: SseEventMap[K]) => void;
 
-const SSE_EVENTS: SseEventName[] = ["system", "runs", "run-event", "workspace", "office", "usage", "prayer", "questions"];
+const SSE_EVENTS: SseEventName[] = ["system", "runs", "run-event", "workspace", "office", "usage", "prayer", "questions", "discussions"];
 
 /**
  * Opens `/api/events` and reconnects with exponential backoff (1 s → 30 s).

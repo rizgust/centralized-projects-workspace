@@ -18,8 +18,10 @@ import (
 
 type Project struct {
 	Name           string `yaml:"name"`
+	Kind           string `yaml:"kind"` // templates/kinds/<kind>; default software
 	Classification string `yaml:"classification"`
 	Type           string `yaml:"type"`
+	Repo           string `yaml:"repo"` // clone | local | none (inferred when empty)
 	ProjectPath    string `yaml:"project_path"`
 	RepoPath       string `yaml:"repo_path"`
 	Remote         string `yaml:"remote"`
@@ -82,9 +84,30 @@ func Init(root string, c Config, opt InitOptions, log io.Writer) error {
 
 	for _, id := range c.IDs() {
 		p := c.Projects[id]
+		mode := p.RepoMode()
+		if mode == RepoNone {
+			act("ok     %s (no repository)", id)
+			continue
+		}
 		repo := filepath.Join(root, filepath.FromSlash(p.RepoPath))
 		if _, err := os.Stat(repo); err == nil {
 			act("ok     %s -> %s", id, repo)
+			continue
+		}
+		if mode == RepoLocal {
+			branch := p.DefaultBranch
+			if branch == "" {
+				branch = "main"
+			}
+			act("init   %s: git init -b %s %s", id, branch, repo)
+			if opt.DryRun {
+				continue
+			}
+			cmd := exec.Command("git", "init", "-b", branch, repo)
+			cmd.Stdout, cmd.Stderr = log, log
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("git init %s: %w", id, err)
+			}
 			continue
 		}
 		if opt.NoClone || p.Remote == "" {
@@ -132,8 +155,13 @@ func Check(root string, c Config) []string {
 				bad("%s: missing %s", id, f)
 			}
 		}
-		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(p.RepoPath), ".git")); err != nil {
-			bad("%s: repo not found at %s (run pcctl init)", id, p.RepoPath)
+		if _, err := LoadKind(root, p.KindOf()); err != nil {
+			bad("%s: %v", id, err)
+		}
+		if p.RepoMode() != RepoNone {
+			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(p.RepoPath), ".git")); err != nil {
+				bad("%s: repo not found at %s (run pcctl init)", id, p.RepoPath)
+			}
 		}
 		for _, state := range taskStates {
 			files, _ := filepath.Glob(filepath.Join(proj, "tasks", state, "*.yaml"))
