@@ -21,18 +21,7 @@ operating_model:
 #     remote: git@github.com:<org>/<repo>.git
 #     default_branch: main
 #     working_branch: null
-projects:
-  test-01:
-    name: test-01
-    kind: prototype
-    classification: personal
-    type: prototype
-    project_path: projects/test-01
-    repo: local
-    repo_path: repos/test-01
-    remote: null
-    default_branch: main
-    working_branch: null
+projects: {}
 
 # Sholat times for the dashboard: virtual workers go to wudhu and the mushola at each
 # of the five daily prayers, and new agent launches are held for window_min minutes

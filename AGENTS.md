@@ -93,6 +93,41 @@ Owner asks.
 6. Load the new project's context.
 7. Do not carry project-specific assumptions into the new project.
 
+## Owner workflow
+
+Every project follows the Owner's lifecycle, recorded as `workflow.phase` in its
+`project.yaml` and driven from the dashboard. The step prompts are in `prompts/workflow/`.
+
+1. **Intake.** The Owner gives the Analyst the scope and requirements (`brief.md`,
+   `requirements/`).
+2. **Brainstorm.** The Owner discusses with the Analyst (project discussions).
+3. **Planning.** The Analyst prepares everything development needs (`analyst-plan.md`):
+   - the kind's documents and features;
+   - weighted tasks in `tasks/backlog/`;
+   - `plan.md` and `handover.md`.
+
+   The project then moves to review by itself.
+4. **Review.** The Owner reviews the plan and adjusts task weights. Each change keeps the
+   Analyst's original as `proposed_weight` and adds a note to the task. The Owner then
+   either requests changes (the Analyst revises, back to planning) or approves the plan.
+5. **Approval and handover.** Approval moves tasks that meet the Definition of Ready to
+   ready, records an ADR, and starts the PM's kickoff (`pm-kickoff.md`).
+6. **Execution.** The PM proposes delegations (`delegations/DLG-*.yaml`), each a list of
+   tasks with a role and budget. The Owner approves or rejects every proposal. The
+   dashboard launches approved tasks within the project's limits: parallel runs, a daily
+   budget, a per-task budget of weight × rate, and the sholat hold. The PM reports:
+   - on milestones (a feature completed, a task blocked, a run failed, all tasks done);
+   - a daily summary;
+   - every few hours when something changed;
+   - whenever the Owner asks.
+
+   When the Owner wants to talk to another role, the PM arranges it: a read-only
+   briefing, then a discussion with that role.
+7. **Done.** The Owner closes the project.
+
+The PM never starts agents directly, and the Analyst never implements. Owner decisions
+(plan approval, delegations) are files in the project and therefore versioned.
+
 ## Project kinds
 
 Not every project is software. Each project has a `kind` (`templates/kinds/`):
