@@ -1,6 +1,8 @@
 package dashboard
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/rizgust/centralized-projects-workspace/internal/workspace"
@@ -44,4 +46,37 @@ func TestAskingWorker(t *testing.T) {
 
 func rolesForTest() []workspace.RoleInfo {
 	return []workspace.RoleInfo{{ID: "uiux", Name: "UI/UX Designer"}}
+}
+
+func TestSharedAnalyst(t *testing.T) {
+	root := t.TempDir()
+	ws := "version: 1\n\nprojects:\n  a:\n    kind: general\n    project_path: projects/a\n    repo: none\n  b:\n    kind: general\n    project_path: projects/b\n    repo: none\n"
+	if err := os.WriteFile(filepath.Join(root, "workspace.yaml"), []byte(ws), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "agents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := workspace.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runs := []Run{{ID: "r1", Project: "b", Role: "analyst", Status: "running", LastText: "Write"}}
+	qs := []Question{{ID: "Q1", From: "analyst", Project: "a", Question: "Scope?", Status: "open"}}
+	o := buildOffice(root, cfg, runs, qs, 0)
+	for _, room := range o.Rooms {
+		for _, w := range room.Workers {
+			if w.Role == "analyst" {
+				t.Fatalf("project room %s still has an analyst", room.Project)
+			}
+		}
+	}
+	for _, w := range o.HQ {
+		if w.Role == "analyst" {
+			t.Fatal("HQ still has an analyst")
+		}
+	}
+	if o.Analyst.State != "working" || o.Analyst.Project == nil || *o.Analyst.Project != "b" || len(o.Analyst.Busy) != 2 {
+		t.Fatalf("shared analyst should be working on b with 2 busy entries: %+v", o.Analyst)
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -34,6 +35,7 @@ type Task struct {
 	Status             string       `yaml:"status" json:"status"`
 	Owner              string       `yaml:"owner" json:"owner"`
 	Weight             *int         `yaml:"weight" json:"weight"`
+	ProposedWeight     *int         `yaml:"proposed_weight,omitempty" json:"proposedWeight"` // the Analyst's weight before Owner review
 	Priority           string       `yaml:"priority" json:"priority"`
 	Risk               string       `yaml:"risk" json:"risk"`
 	Description        string       `yaml:"description" json:"description"`
@@ -70,6 +72,10 @@ type TaskPatch struct {
 	Collaborators      *[]string `json:"collaborators"`
 	Reviewers          *[]string `json:"reviewers"`
 	AddNote            *string   `json:"addNote"`
+
+	// OwnerReview is set by the dashboard during the review phase: a weight change
+	// keeps the Analyst's original as proposed_weight and adds a review note.
+	OwnerReview bool `json:"-"`
 }
 
 var validWeights = map[int]bool{1: true, 2: true, 3: true, 5: true, 8: true, 13: true}
@@ -226,6 +232,20 @@ func (c Config) UpdateTask(root, project, id string, p TaskPatch) (Task, error) 
 	if err != nil {
 		return Task{}, err
 	}
+	if p.OwnerReview && p.Weight != nil && (cur.Weight == nil || *cur.Weight != *p.Weight) {
+		old := "none"
+		if cur.Weight != nil {
+			old = fmt.Sprint(*cur.Weight)
+			if mapGet(doc.Content[0], "proposed_weight") == nil {
+				mapSet(doc.Content[0], "proposed_weight", intNode(*cur.Weight))
+			}
+		}
+		note := fmt.Sprintf("%s Owner review: weight %s → %d", time.Now().Format("2006-01-02 15:04"), old, *p.Weight)
+		if p.AddNote != nil && strings.TrimSpace(*p.AddNote) != "" {
+			note += " (" + strings.TrimSpace(*p.AddNote) + ")"
+		}
+		p.AddNote = &note
+	}
 	if err := applyPatch(doc.Content[0], p); err != nil {
 		return Task{}, err
 	}
@@ -295,6 +315,27 @@ func applyPatch(m *yaml.Node, p TaskPatch) error {
 		notes.Content = append(notes.Content, strNode(*p.AddNote))
 	}
 	return nil
+}
+
+// Unready lists what a task still lacks for the Definition of Ready.
+func (t Task) Unready() []string {
+	var missing []string
+	if strings.TrimSpace(t.Title) == "" {
+		missing = append(missing, "title")
+	}
+	if t.Owner == "" || t.Owner == "null" {
+		missing = append(missing, "owner")
+	}
+	if t.Weight == nil {
+		missing = append(missing, "weight")
+	}
+	if len(t.AcceptanceCriteria) == 0 {
+		missing = append(missing, "acceptance criteria")
+	}
+	if t.Risk == "" {
+		missing = append(missing, "risk")
+	}
+	return missing
 }
 
 func removeGitkeep(dir string) {

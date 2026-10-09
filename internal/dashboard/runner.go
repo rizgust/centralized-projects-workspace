@@ -42,6 +42,8 @@ type Run struct {
 	ParentRunID    *string  `json:"parentRunId"`  // set when this run resumes an earlier run's session
 	QuestionID     *string  `json:"questionId"`   // the owner question this run answers
 	DiscussionID   *string  `json:"discussionId"` // set for discussion turns
+	// work (a task) | discussion | plan | revise | kickoff | delegate | report | arrange
+	Purpose string `json:"purpose"`
 }
 
 type RunEvent struct {
@@ -69,6 +71,7 @@ type RunRequest struct {
 	// discussions: a conversation with the Owner in plan (read-only) mode
 	discussionID    string
 	discussionTopic string
+	purpose         string // workflow step; empty = work on a task
 }
 
 const maxEventsInMemory = 3000
@@ -240,10 +243,11 @@ func (r *runner) start(cfg workspace.Config, req RunRequest) (Run, error) {
 	if strings.TrimSpace(req.Prompt) == "" && req.TaskID == nil {
 		return Run{}, fmt.Errorf("a prompt or a task is required")
 	}
+	readOnly := discussion || req.purpose == "arrange"
 	switch {
-	case discussion && req.PermissionMode != "plan":
-		return Run{}, fmt.Errorf("discussions run in plan (read-only) mode")
-	case !discussion && req.PermissionMode != "acceptEdits" && req.PermissionMode != "bypassPermissions":
+	case readOnly && req.PermissionMode != "plan":
+		return Run{}, fmt.Errorf("discussions and briefings run in plan (read-only) mode")
+	case !readOnly && req.PermissionMode != "acceptEdits" && req.PermissionMode != "bypassPermissions":
 		return Run{}, fmt.Errorf("permissionMode must be acceptEdits or bypassPermissions")
 	}
 	if req.BudgetUSD <= 0 || req.BudgetUSD > 100 {
@@ -294,7 +298,8 @@ func (r *runner) start(cfg workspace.Config, req RunRequest) (Run, error) {
 		}
 	}
 
-	runID := time.Now().Format("20060102-150405") + "-" + req.Role
+	// unique even when several runs of one role start in the same second
+	runID := time.Now().Format("20060102-150405") + "-" + req.Role + "-" + uuid.NewString()[:4]
 	sessionID := uuid.NewString()
 	if req.resumeSession != "" {
 		sessionID = req.resumeSession
@@ -328,6 +333,11 @@ func (r *runner) start(cfg workspace.Config, req RunRequest) (Run, error) {
 			"Scope: "+scope+".",
 			"You are in plan (read-only) mode: read files, search, and reason, but do not modify anything. Be conversational and concise: offer concrete options with trade-offs, say what you checked, and ask the Owner a clarifying question in your reply when you need one.",
 			"When the Owner asks you to wrap up, reply with exactly these sections: ## Summary, ## Ideas, ## Decisions, ## Next steps (each next step as `- [role] action (project)`), ## Open questions.",
+		)
+	} else if req.purpose != "" {
+		lines = append(lines,
+			"You were launched headless from the Projects-Centralized dashboard for a workflow step ("+req.purpose+"). Follow AGENTS.md and your role definition. Never commit or push, and never start other agents yourself.",
+			ownerQuestionPrompt(r.qdir, req.Project, req.Role, runID, sessionID, taskRef),
 		)
 	} else {
 		lines = append(lines,
@@ -387,8 +397,13 @@ func (r *runner) start(cfg workspace.Config, req RunRequest) (Run, error) {
 	if req.questionID != "" {
 		st.run.QuestionID = strp(req.questionID)
 	}
+	st.run.Purpose = "work"
+	if req.purpose != "" {
+		st.run.Purpose = req.purpose
+	}
 	if discussion {
 		st.run.DiscussionID = strp(req.discussionID)
+		st.run.Purpose = "discussion"
 	}
 	r.mu.Lock()
 	r.runs[st.run.ID] = st

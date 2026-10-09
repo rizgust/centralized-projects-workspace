@@ -19,6 +19,17 @@ type Worker struct {
 	// asking: an open owner question from this worker; they wait in the Owner's room
 	QuestionID *string `json:"questionId"`
 	Question   *string `json:"question"`
+	// Project the state refers to (set on the shared Analyst, who serves every project)
+	Project *string `json:"project"`
+	// Busy lists every project where this worker currently has something going on
+	Busy []AnalystLoad `json:"busy,omitempty"`
+}
+
+// AnalystLoad is one project's demand on the shared Analyst.
+type AnalystLoad struct {
+	Project string `json:"project"`
+	State   string `json:"state"`
+	Bubble  string `json:"bubble"`
 }
 
 type Room struct {
@@ -26,8 +37,11 @@ type Room struct {
 	Name    string   `json:"name"`
 	Kind    string   `json:"kind"`  // software | prototype | investigation | design | general
 	Roles   []string `json:"roles"` // roles involved in this kind of project
-	Active  bool     `json:"active"`
-	Workers []Worker `json:"workers"`
+	Phase   string   `json:"phase"` // intake | brainstorm | planning | review | execution | done
+	// delegation proposals waiting for the Owner: the PM waits in the Owner's room
+	PendingDelegations int      `json:"pendingDelegations"`
+	Active             bool     `json:"active"`
+	Workers            []Worker `json:"workers"`
 }
 
 type Office struct {
@@ -39,6 +53,9 @@ type Office struct {
 	// discussions with the Owner that are live (a turn is running, or activity in the
 	// last 20 minutes): that role's worker sits with the Owner in the Owner's room
 	Discussions []ActiveDiscussion `json:"discussions"`
+	// The Analyst works with the Owner: one Analyst, seated in the Owner's office, serving
+	// every project. Project rooms and HQ do not include the Analyst.
+	Analyst Worker `json:"analyst"`
 }
 
 type ActiveDiscussion struct {
@@ -50,6 +67,11 @@ type ActiveDiscussion struct {
 }
 
 func strp(s string) *string { return &s }
+
+// sharedRoles sit in the Owner's office instead of in project rooms.
+var sharedRoles = map[string]bool{"analyst": true}
+
+var stateRank = map[string]int{"working": 6, "asking": 5, "blocked": 4, "review": 3, "waiting": 2, "idle": 0}
 
 // buildOffice derives each virtual worker's state, in priority order:
 // running agent run > open owner question (asking) > blocked task > task in review
@@ -72,12 +94,44 @@ func buildOffice(root string, cfg workspace.Config, runs []Run, questions []Ques
 			room.Roles = k.Roles
 		}
 		for _, r := range roles {
-			room.Workers = append(room.Workers, workerFor(r, id, tasks, runs, questions))
+			w := workerFor(r, id, tasks, runs, questions)
+			if sharedRoles[r.ID] {
+				// fold this project's demand into the one shared Analyst
+				if w.State != "idle" {
+					o.Analyst.Busy = append(o.Analyst.Busy, AnalystLoad{Project: id, State: w.State, Bubble: w.Bubble})
+				}
+				if o.Analyst.Role == "" || stateRank[w.State] > stateRank[o.Analyst.State] ||
+					(stateRank[w.State] == stateRank[o.Analyst.State] && w.State != "idle" && id == active) {
+					busy := o.Analyst.Busy
+					o.Analyst = w
+					o.Analyst.Busy = busy
+					if w.State != "idle" {
+						o.Analyst.Project = strp(id)
+					}
+				}
+				continue
+			}
+			room.Workers = append(room.Workers, w)
 		}
 		o.Rooms = append(o.Rooms, room)
 	}
+	if o.Analyst.Role == "" {
+		for _, r := range roles {
+			if sharedRoles[r.ID] {
+				o.Analyst = Worker{Role: r.ID, Name: r.Name, State: "idle", Bubble: "zz"}
+			}
+		}
+	}
+	// discussions and workspace-level analyst runs (no project) also keep the Analyst busy
+	for _, run := range runs {
+		if run.Status == "running" && run.Role == "analyst" && run.Project == "" && o.Analyst.State != "working" {
+			o.Analyst.State, o.Analyst.RunID, o.Analyst.Bubble = "working", strp(run.ID), run.LastText
+		}
+	}
 	for _, r := range roles {
-		o.HQ = append(o.HQ, Worker{Role: r.ID, Name: r.Name, State: "idle", Bubble: "zz"})
+		if !sharedRoles[r.ID] {
+			o.HQ = append(o.HQ, Worker{Role: r.ID, Name: r.Name, State: "idle", Bubble: "zz"})
+		}
 	}
 	return o
 }

@@ -49,6 +49,7 @@ type server struct {
 	sys   *sysmon
 	qs    *questionStore
 	ds    *discussionStore
+	wf    *workflowEngine
 
 	mu         sync.Mutex
 	lastOffice []byte
@@ -77,7 +78,9 @@ func Serve(root string, opt Options) error {
 	})
 	s.qs = newQuestionStore(root)
 	s.ds = &discussionStore{root: root}
+	s.wf = newWorkflowEngine(s)
 	s.runs.onFinish = func(run Run, final string) {
+		s.wf.runFinished(run, final)
 		if run.DiscussionID != nil {
 			s.discussionReply(run, final)
 			return
@@ -125,6 +128,8 @@ func (s *server) loops(ctx context.Context) {
 	tick, sig := 0, s.workspaceSig()
 	prayerT := time.NewTicker(10 * time.Second)
 	defer prayerT.Stop()
+	wfT := time.NewTicker(20 * time.Second)
+	defer wfT.Stop()
 	lastPrayer := ""
 	s.sys.sample(true)
 	for {
@@ -138,6 +143,8 @@ func (s *server) loops(ctx context.Context) {
 			s.usage.scan()
 			s.hub.publish("usage", map[string]any{"today": s.usage.report(1).Today})
 			s.publishOffice() // interactive session count may change
+		case <-wfT.C:
+			s.wf.tick()
 		case <-prayerT.C:
 			st := prayerStatus(loadPrayerConfig(s.root), time.Now())
 			key := ""
@@ -194,7 +201,28 @@ func (s *server) runsChanged() {
 }
 
 func (s *server) office() Office {
-	o := buildOffice(s.root, s.cfg(), s.runs.list(), s.qs.open(), s.usage.liveInteractive())
+	cfg := s.cfg()
+	o := buildOffice(s.root, cfg, s.runs.list(), s.qs.open(), s.usage.liveInteractive())
+	for i := range o.Rooms {
+		room := &o.Rooms[i]
+		if wf, err := cfg.LoadWorkflow(s.root, room.Project); err == nil {
+			room.Phase = wf.Phase
+		}
+		for _, d := range s.delegations(room.Project) {
+			if d.Status == "proposed" {
+				room.PendingDelegations++
+			}
+		}
+		if room.PendingDelegations == 0 {
+			continue
+		}
+		for j := range room.Workers {
+			w := &room.Workers[j]
+			if w.Role == "project-manager" && w.State != "working" {
+				w.State, w.Bubble = "proposing", "DLG"
+			}
+		}
+	}
 	for _, d := range s.ds.list(s.discussionRunning) {
 		updated, _ := time.Parse(time.RFC3339, d.UpdatedAt)
 		if d.Status == "open" && (d.Running != nil || time.Since(updated) < 20*time.Minute) {
@@ -490,6 +518,9 @@ func (s *server) routes() http.Handler {
 		if err := readJSON(r, &p); err != nil {
 			return nil, err
 		}
+		if wf, err := s.cfg().LoadWorkflow(s.root, r.PathValue("id")); err == nil && wf.Phase == "review" {
+			p.OwnerReview = true // keep the Analyst's weight as proposed_weight and note the change
+		}
 		t, err := s.cfg().UpdateTask(s.root, r.PathValue("id"), r.PathValue("taskId"), p)
 		if err == nil {
 			s.publishOffice()
@@ -519,6 +550,8 @@ func (s *server) routes() http.Handler {
 		}
 		return s.runs.start(s.cfg(), req)
 	})
+	s.workflowRoutes(h)
+	s.docRoutes(h)
 	h("GET /api/kinds", func(w http.ResponseWriter, r *http.Request) (any, error) {
 		return workspace.Kinds(s.root), nil
 	})
